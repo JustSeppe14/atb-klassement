@@ -25,23 +25,28 @@ export function parseFinishFile(buffer: ArrayBuffer): RaceResult[] {
 
 // --- PARSE DEELNEMERS FILE ---
 export function parseDeelnemersFile(buffer: ArrayBuffer) {
+  // Read the workbook from the buffer
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
+  // Convert sheet to 2D array (header: 1 ensures we get arrays of values)
   const rows: any[][] = XLSX.utils.sheet_to_json(sheet, {
     header: 1,
     raw: false,
   });
 
-  // 🔍 zoek header
+  // 🔍 Search for the header row. 
+  // Based on your file, it's looking for "nr" or "naam".
   const headerIndex = rows.findIndex((row) =>
-    row.some((cell) =>
-      String(cell).toLowerCase().includes("nummer")
-    )
+    row.some((cell) => {
+      const val = String(cell).toLowerCase();
+      return val.includes("nr") || val.includes("naam");
+    })
   );
 
   if (headerIndex === -1) return [];
 
+  // Normalize headers for easier indexing
   const headers = rows[headerIndex].map((h) =>
     String(h).toLowerCase().trim()
   );
@@ -50,31 +55,40 @@ export function parseDeelnemersFile(buffer: ArrayBuffer) {
 
   return dataRows
     .map((row) => {
-      if (!row || row.length === 0) return null;
+      // Skip empty rows
+      if (!row || row.length === 0 || row.every(cell => !cell)) return null;
 
-      const get = (name: string) => {
-        const idx = headers.findIndex((h) => h.includes(name));
+      const get = (names: string[]) => {
+        const idx = headers.findIndex((h) => 
+          names.some(name => h === name || h.includes(name))
+        );
         return idx !== -1 ? row[idx] : "";
       };
 
-      const naam = String(get("naam") || "").trim();
+      // Extract Name (Required)
+      const naam = String(get(["naam"]) || "").trim();
       if (!naam) return null;
 
-      const bibRaw = get("nummer");
-
-      const bib =
-        typeof bibRaw === "number"
+      // Extract Bib (Nr)
+      const bibRaw = get(["nr", "nummer"]);
+      const bib = typeof bibRaw === "number"
           ? bibRaw
           : parseInt(String(bibRaw).replace(/\D/g, "")) || 0;
 
-      const klasse = String(get("klasse") || "").trim().toUpperCase();
+      // Extract Klasse (Map to your needs, using 'cat' if separate class column missing)
+      const klasse = String(get(["klasse", "cat"]) || "").trim().toUpperCase();
 
-      let categorie = String(get("cat") || "").trim().toUpperCase();
+      // Extract Categorie with strict validation for ('STA', 'SEN', 'DAM')
+      let categorie = String(get(["cat", "categorie"]) || "").trim().toUpperCase();
       if (!["STA", "SEN", "DAM"].includes(categorie)) {
-        categorie = "STA";
+        // Fallback or transformation logic if the file uses different codes
+        if (categorie.startsWith("S")) categorie = "SEN";
+        else if (categorie.startsWith("D")) categorie = "DAM";
+        else categorie = "STA"; 
       }
 
-      const team = String(get("team") || "").trim();
+      // Extract Team (Ploeg)
+      const team = String(get(["ploeg", "team"]) || "").trim();
 
       return {
         bib,
@@ -82,7 +96,7 @@ export function parseDeelnemersFile(buffer: ArrayBuffer) {
         klasse,
         categorie,
         team: team || null,
-      };
+      } as Deelnemer;
     })
     .filter(Boolean);
 }
