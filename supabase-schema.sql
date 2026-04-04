@@ -1,0 +1,60 @@
+-- ATB Klassement — Supabase database schema
+-- Run this in the Supabase SQL Editor: https://supabase.com → your project → SQL Editor
+
+-- ============================================================
+-- 1. DEELNEMERS (participants)
+-- ============================================================
+create table if not exists deelnemers (
+  id          bigserial primary key,
+  bib         integer not null unique,
+  naam        text not null,
+  klasse      text not null,
+  categorie   text not null check (categorie in ('STA', 'SEN', 'DAM')),
+  team        text,
+  created_at  timestamptz default now()
+);
+
+-- ============================================================
+-- 2. RACE RESULTS
+-- ============================================================
+create table if not exists race_results (
+  id          bigserial primary key,
+  week        integer not null check (week >= 1 and week <= 20),
+  bib         integer not null,
+  plaats      integer not null,
+  created_at  timestamptz default now(),
+  unique (week, bib)
+);
+
+-- ============================================================
+-- 3. CONFIG (single row, id=1)
+-- ============================================================
+create table if not exists config (
+  id                        integer primary key default 1,
+  current_week              integer default 1,
+  is_second_period_started  boolean default false,
+  second_period_start_week  integer default 12,
+  season_ended              boolean default false,
+  updated_at                timestamptz default now(),
+  constraint config_single_row check (id = 1)
+);
+
+-- Insert default config row
+insert into config (id) values (1) on conflict (id) do nothing;
+
+-- ============================================================
+-- 4. ROW LEVEL SECURITY
+-- Allow all operations from the service role key (used by API routes)
+-- The anon key (used by the frontend) only gets read access
+-- ============================================================
+alter table deelnemers enable row level security;
+alter table race_results enable row level security;
+alter table config enable row level security;
+
+-- Read: everyone (needed for public dashboard if you want)
+create policy "Allow read deelnemers"  on deelnemers  for select using (true);
+create policy "Allow read race_results" on race_results for select using (true);
+create policy "Allow read config"       on config       for select using (true);
+
+-- Write: only service role (API routes use SUPABASE_SERVICE_ROLE_KEY)
+-- The service role bypasses RLS by default, so no extra policies needed for writes.
