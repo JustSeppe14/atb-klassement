@@ -229,6 +229,9 @@ export function computeTeamScores(
     const row = klassement.find((r) => r.bib === d.bib);
     if (!row) continue;
 
+    // Exclude riders who never participated (totaal === MAX_POINTS = 80)
+    if (row.totaal >= MAX_POINTS) continue;
+
     const punten = row.totaal ?? maxPoints;
     const team = d.team;
 

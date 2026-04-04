@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { exportKlassementToExcel } from "@/lib/excel";
-import { computeKlassement } from "@/lib/klassement";
+import { computeKlassement, computeRegelmatigheid, computeTeamScores } from "@/lib/klassement";
 import { DEFAULT_CONFIG, SeasonConfig } from "@/lib/utils";
 
 export async function GET() {
@@ -22,13 +22,15 @@ export async function GET() {
       seasonEnded: configData?.season_ended ?? false,
     };
 
-    const klassement = computeKlassement(
-      deelnemers ?? [],
-      results ?? [],
-      config
-    );
+    const d = deelnemers ?? [];
+    const r = results ?? [];
 
-    const buffer = exportKlassementToExcel(klassement);
+    const klassement = computeKlassement(d, r, config);
+    const regelmatigheid = computeRegelmatigheid(d, r, config.currentWeek);
+    const teamSTA = computeTeamScores(d, klassement, "STA");
+    const teamMixed = computeTeamScores(d, klassement, "MIXED");
+
+    const buffer = exportKlassementToExcel(klassement, regelmatigheid, teamSTA, teamMixed);
     const week = config.currentWeek;
 
     return new NextResponse(buffer as unknown as BodyInit, {

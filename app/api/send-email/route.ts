@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { exportKlassementToExcel } from "@/lib/excel";
-import { computeKlassement } from "@/lib/klassement";
+import { computeKlassement, computeRegelmatigheid, computeTeamScores } from "@/lib/klassement";
 import { DEFAULT_CONFIG, SeasonConfig } from "@/lib/utils";
 
 export async function POST(req: NextRequest) {
@@ -28,13 +28,15 @@ export async function POST(req: NextRequest) {
       seasonEnded: configData?.season_ended ?? false,
     };
 
-    const klassement = computeKlassement(
-      deelnemers ?? [],
-      results ?? [],
-      config
-    );
+    const d = deelnemers ?? [];
+    const r = results ?? [];
 
-    const excelBuffer = exportKlassementToExcel(klassement);
+    const klassement = computeKlassement(d, r, config);
+    const regelmatigheid = computeRegelmatigheid(d, r, config.currentWeek);
+    const teamSTA = computeTeamScores(d, klassement, "STA");
+    const teamMixed = computeTeamScores(d, klassement, "MIXED");
+
+    const excelBuffer = exportKlassementToExcel(klassement, regelmatigheid, teamSTA, teamMixed);
 
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST ?? "smtp.gmail.com",

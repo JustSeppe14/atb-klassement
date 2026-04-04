@@ -108,7 +108,26 @@ export function parseDeelnemersFile(buffer: ArrayBuffer) {
 }
 
 // --- EXPORT KLASSEMENT TO EXCEL ---
-export function exportKlassementToExcel(rows: KlassementRow[]): Buffer {
+export interface RegelmatigheidRow {
+  bib: number;
+  naam: string;
+  klasse: string;
+  aantalDeelnames: number;
+  punten: number;
+}
+
+export interface TeamRow {
+  team: string;
+  punten: number;
+  riders: string[];
+}
+
+export function exportKlassementToExcel(
+  rows: KlassementRow[],
+  regelmatigheid: RegelmatigheidRow[] = [],
+  teamSTA: TeamRow[] = [],
+  teamMixed: TeamRow[] = []
+): Buffer {
   const wb = XLSX.utils.book_new();
 
   // Group rows by klasse for separate sheets
@@ -121,8 +140,21 @@ export function exportKlassementToExcel(rows: KlassementRow[]): Buffer {
   // Get all race names in order
   const allRaceNames = Object.values(RACE_NAMES);
 
-  // Sheet: KLASSEMENT (all riders)
-  const klassementData = rows.map((row) => {
+  // Defined class order
+  const klasseOrder = ["A", "A40+", "B", "B50+", "C", "D", "E"];
+  const klasseSortIndex = (k: string) => {
+    const i = klasseOrder.indexOf(k);
+    return i === -1 ? 999 : i;
+  };
+
+  // Sheet: KLASSEMENT (all riders) — sorted by class order, then plaatsKlasse
+  const sortedRows = [...rows].sort((a, b) => {
+    const ki = klasseSortIndex(a.klasse) - klasseSortIndex(b.klasse);
+    if (ki !== 0) return ki;
+    return a.plaatsKlasse - b.plaatsKlasse;
+  });
+
+  const klassementData = sortedRows.map((row) => {
     const base: Record<string, unknown> = {
       "Nr.": row.bib,
       Naam: row.naam,
@@ -149,8 +181,12 @@ export function exportKlassementToExcel(rows: KlassementRow[]): Buffer {
   const ws = XLSX.utils.json_to_sheet(klassementData);
   XLSX.utils.book_append_sheet(wb, ws, "KLASSEMENT");
 
-  // Per-klasse sheets
-  for (const [klasse, klasseRows] of klasseMap.entries()) {
+  // Per-klasse sheets — in defined class order
+  const sortedKlasses = [...klasseMap.entries()].sort(
+    (a, b) => klasseSortIndex(a[0]) - klasseSortIndex(b[0])
+  );
+
+  for (const [klasse, klasseRows] of sortedKlasses) {
     const sheetData = klasseRows.map((row) => {
       const base: Record<string, unknown> = {
         "Nr.": row.bib,
@@ -169,6 +205,46 @@ export function exportKlassementToExcel(rows: KlassementRow[]): Buffer {
     const sheetName = klasse.replace(/[:\\/?*\[\]]/g, "_").substring(0, 31);
     const ws2 = XLSX.utils.json_to_sheet(sheetData);
     XLSX.utils.book_append_sheet(wb, ws2, sheetName);
+  }
+
+  // Sheet: REGELMATIGHEID
+  if (regelmatigheid.length > 0) {
+    const regData = regelmatigheid.map((row, idx) => ({
+      "Pos.": idx + 1,
+      "Nr.": row.bib,
+      Naam: row.naam,
+      Klasse: row.klasse,
+      Gereden: row.aantalDeelnames,
+      Punten: row.punten,
+    }));
+    const wsReg = XLSX.utils.json_to_sheet(regData);
+    XLSX.utils.book_append_sheet(wb, wsReg, "REGELMATIGHEID");
+  }
+
+  // Sheet: STA TEAMS
+  if (teamSTA.length > 0) {
+    const staData = teamSTA
+      .filter((t) => t.team && t.team.toLowerCase() !== "geen team" && t.team.toLowerCase() !== "individueel")
+      .map((row, idx) => ({
+        "#": idx + 1,
+        Team: row.team,
+        Punten: row.punten,
+      }));
+    const wsSTA = XLSX.utils.json_to_sheet(staData);
+    XLSX.utils.book_append_sheet(wb, wsSTA, "STA TEAMS");
+  }
+
+  // Sheet: MIXED TEAMS
+  if (teamMixed.length > 0) {
+    const mixedData = teamMixed
+      .filter((t) => t.team && t.team.toLowerCase() !== "geen team" && t.team.toLowerCase() !== "individueel")
+      .map((row, idx) => ({
+        "#": idx + 1,
+        Team: row.team,
+        Punten: row.punten,
+      }));
+    const wsMixed = XLSX.utils.json_to_sheet(mixedData);
+    XLSX.utils.book_append_sheet(wb, wsMixed, "MIXED TEAMS");
   }
 
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
