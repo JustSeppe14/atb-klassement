@@ -35,8 +35,7 @@ export function parseDeelnemersFile(buffer: ArrayBuffer) {
     raw: false,
   });
 
-  // 🔍 Search for the header row. 
-  // Based on your file, it's looking for "nr" or "naam".
+  // 🔍 Search for the header row
   const headerIndex = rows.findIndex((row) =>
     row.some((cell) => {
       const val = String(cell).toLowerCase();
@@ -76,12 +75,19 @@ export function parseDeelnemersFile(buffer: ArrayBuffer) {
           : parseInt(String(bibRaw).replace(/\D/g, "")) || 0;
 
       // Extract Klasse (Map to your needs, using 'cat' if separate class column missing)
-      const klasse = String(get(["klasse", "cat"]) || "").trim().toUpperCase();
+      let klasse = String(get(["klasse", "cat"]) || "").trim().toUpperCase();
+
+      // 🔹 Normalize Klasse values for patterns like "A + 40J", "B + 50J", etc.
+      const klasseMatch = klasse.match(/^([A-Z])\s*\+?\s*(\d+)J?$/);
+      if (klasseMatch) {
+        const letter = klasseMatch[1];
+        const number = klasseMatch[2];
+        klasse = `${letter}${number}+`;
+      }
 
       // Extract Categorie with strict validation for ('STA', 'SEN', 'DAM')
       let categorie = String(get(["cat", "categorie"]) || "").trim().toUpperCase();
       if (!["STA", "SEN", "DAM"].includes(categorie)) {
-        // Fallback or transformation logic if the file uses different codes
         if (categorie.startsWith("S")) categorie = "SEN";
         else if (categorie.startsWith("D")) categorie = "DAM";
         else categorie = "STA"; 
