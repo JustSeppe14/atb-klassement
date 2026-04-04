@@ -43,18 +43,30 @@ create table if not exists config (
 insert into config (id) values (1) on conflict (id) do nothing;
 
 -- ============================================================
--- 4. ROW LEVEL SECURITY
--- Allow all operations from the service role key (used by API routes)
--- The anon key (used by the frontend) only gets read access
+-- 4. RACES
+-- ============================================================
+create table if not exists races (
+  id          serial primary key,
+  name        text not null,
+  date        date,
+  sort_order  integer default 0
+);
+
+-- ============================================================
+-- 5. ROW LEVEL SECURITY
 -- ============================================================
 alter table deelnemers enable row level security;
 alter table race_results enable row level security;
 alter table config enable row level security;
+alter table races enable row level security;
 
--- Read: everyone (needed for public dashboard if you want)
-create policy "Allow read deelnemers"  on deelnemers  for select using (true);
-create policy "Allow read race_results" on race_results for select using (true);
-create policy "Allow read config"       on config       for select using (true);
+-- ============================================================
+-- 6. POLICIES (read access for everyone)
+-- ============================================================
+create policy if not exists "Allow read deelnemers"     on deelnemers    for select using (true);
+create policy if not exists "Allow read race_results"   on race_results for select using (true);
+create policy if not exists "Allow read config"         on config       for select using (true);
+create policy if not exists "Allow read races"          on races        for select using (true);
 
 -- Write: only service role (API routes use SUPABASE_SERVICE_ROLE_KEY)
--- The service role bypasses RLS by default, so no extra policies needed for writes.
+-- The service role bypasses RLS by default, so no extra policies needed for writes
