@@ -14,12 +14,17 @@ export async function POST(req: NextRequest) {
 
     const supabase = getSupabaseAdmin();
 
-    const [{ data: deelnemers }, { data: results }, { data: configData }] =
-      await Promise.all([
-        supabase.from("deelnemers").select("*"),
-        supabase.from("race_results").select("*"),
-        supabase.from("config").select("*").eq("id", 1).single(),
-      ]);
+    const [
+      { data: deelnemers },
+      { data: results },
+      { data: configData },
+      { data: racesData },
+    ] = await Promise.all([
+      supabase.from("deelnemers").select("*"),
+      supabase.from("race_results").select("*"),
+      supabase.from("config").select("*").eq("id", 1).single(),
+      supabase.from("races").select("*").order("sort_order").order("id"),
+    ]);
 
     const config: SeasonConfig = {
       currentWeek: configData?.current_week ?? DEFAULT_CONFIG.currentWeek,
@@ -28,15 +33,20 @@ export async function POST(req: NextRequest) {
       seasonEnded: configData?.season_ended ?? false,
     };
 
+    const EXCLUDED = ["", "vrij"];
+    const races = (racesData ?? []).filter(
+      (r) => !EXCLUDED.includes(r.name.trim().toLowerCase())
+    );
+
     const d = deelnemers ?? [];
     const r = results ?? [];
 
-    const klassement = computeKlassement(d, r, config);
+    const klassement = computeKlassement(d, r, config, races);
     const regelmatigheid = computeRegelmatigheid(d, r, config.currentWeek);
     const teamSTA = computeTeamScores(d, klassement, "STA");
     const teamMixed = computeTeamScores(d, klassement, "MIXED");
 
-    const excelBuffer = exportKlassementToExcel(klassement, regelmatigheid, teamSTA, teamMixed);
+    const excelBuffer = exportKlassementToExcel(klassement, regelmatigheid, teamSTA, teamMixed, races);
 
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST ?? "smtp.gmail.com",
@@ -59,8 +69,7 @@ export async function POST(req: NextRequest) {
         {
           filename: `klassement_week_${config.currentWeek}.xlsx`,
           content: excelBuffer,
-          contentType:
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         },
       ],
     });

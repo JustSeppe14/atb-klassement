@@ -1,17 +1,29 @@
 "use client";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Upload, FileSpreadsheet, CheckCircle, AlertCircle } from "lucide-react";
 import Toast from "@/components/Toast";
-import { RACE_NAMES } from "@/lib/utils";
+import { Race } from "@/lib/utils";
 
 export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
-  const [week, setWeek] = useState<number>(1);
+  const [races, setRaces] = useState<Race[]>([]);
+  const [week, setWeek] = useState<number>(0);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const [lastUpload, setLastUpload] = useState<{ week: number; count: number } | null>(null);
+  const [lastUpload, setLastUpload] = useState<{ week: number; raceName: string; count: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch("/api/races")
+      .then((r) => r.json())
+      .then((data) => {
+        setRaces(data ?? []);
+        if (data?.length > 0) setWeek(data[0].sort_order);
+      });
+  }, []);
+
+  const selectedRace = races.find((r) => r.sort_order === week);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -21,7 +33,7 @@ export default function UploadPage() {
   }, []);
 
   const handleSubmit = async () => {
-    if (!file) return;
+    if (!file || !week) return;
     setLoading(true);
     try {
       const fd = new FormData();
@@ -30,8 +42,8 @@ export default function UploadPage() {
       const res = await fetch("/api/upload-results", { method: "POST", body: fd });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
-      setLastUpload({ week, count: json.count });
-      setToast({ message: `✓ ${json.count} resultaten opgeslagen voor week ${week} (${RACE_NAMES[week]})`, type: "success" });
+      setLastUpload({ week, raceName: selectedRace?.name ?? String(week), count: json.count });
+      setToast({ message: `✓ ${json.count} resultaten opgeslagen voor ${selectedRace?.name ?? `week ${week}`}`, type: "success" });
       setFile(null);
     } catch (err: unknown) {
       setToast({ message: err instanceof Error ? err.message : "Fout bij uploaden", type: "error" });
@@ -47,21 +59,25 @@ export default function UploadPage() {
         Upload het finish-bestand van een wedstrijd. Het bestand moet kolommen bevatten: <code style={{ background: "var(--surface-2)", padding: "1px 6px", borderRadius: 4 }}>bib</code> en <code style={{ background: "var(--surface-2)", padding: "1px 6px", borderRadius: 4 }}>pl</code> (of <code style={{ background: "var(--surface-2)", padding: "1px 6px", borderRadius: 4 }}>plaats</code>).
       </p>
 
-      {/* Week selector */}
+      {/* Race selector */}
       <div className="card" style={{ padding: 20, marginBottom: 20 }}>
         <label style={{ display: "block", fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 10 }}>
-          Wedstrijd / Week
+          Wedstrijd
         </label>
-        <select
-          className="input"
-          style={{ width: "100%" }}
-          value={week}
-          onChange={(e) => setWeek(parseInt(e.target.value))}
-        >
-          {Object.entries(RACE_NAMES).map(([num, name]) => (
-            <option key={num} value={num}>Week {num} — {name}</option>
-          ))}
-        </select>
+        {races.length === 0 ? (
+          <div style={{ color: "var(--text-muted)", fontSize: 13 }}>Geen wedstrijden gevonden. Voeg ze toe via Instellingen.</div>
+        ) : (
+          <select
+            className="input"
+            style={{ width: "100%" }}
+            value={week}
+            onChange={(e) => setWeek(parseInt(e.target.value))}
+          >
+            {races.map((r) => (
+              <option key={r.id} value={r.sort_order}>{r.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Drop zone */}
@@ -94,24 +110,22 @@ export default function UploadPage() {
         )}
       </div>
 
-      <button className="btn-primary" onClick={handleSubmit} disabled={!file || loading} style={{ width: "100%", padding: "14px", fontSize: 15 }}>
-        {loading ? "Bezig met verwerken..." : `Uploaden voor ${RACE_NAMES[week]}`}
+      <button className="btn-primary" onClick={handleSubmit} disabled={!file || !week || loading} style={{ width: "100%", padding: "14px", fontSize: 15 }}>
+        {loading ? "Bezig met verwerken..." : `Uploaden voor ${selectedRace?.name ?? "..."}`}
       </button>
 
-      {/* Last upload summary */}
       {lastUpload && (
         <div className="card" style={{ padding: 16, marginTop: 20, display: "flex", alignItems: "center", gap: 12, borderColor: "var(--green)" }}>
           <CheckCircle size={20} color="var(--green)" />
           <div>
             <div style={{ fontWeight: 600, color: "var(--green)" }}>Laatste upload geslaagd</div>
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Week {lastUpload.week} ({RACE_NAMES[lastUpload.week]}) · {lastUpload.count} resultaten
+              {lastUpload.raceName} · {lastUpload.count} resultaten
             </div>
           </div>
         </div>
       )}
 
-      {/* Format hint */}
       <div className="card" style={{ padding: 16, marginTop: 20, display: "flex", gap: 12 }}>
         <AlertCircle size={18} color="var(--text-muted)" style={{ flexShrink: 0, marginTop: 1 }} />
         <div style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>

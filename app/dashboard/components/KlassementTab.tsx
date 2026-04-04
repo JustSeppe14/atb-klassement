@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { RACE_NAMES } from "@/lib/utils";
+
 import { DashboardData } from "../page";
 
 export default function KlassementTab({ data }: { data: DashboardData }) {
@@ -30,7 +30,7 @@ export default function KlassementTab({ data }: { data: DashboardData }) {
   // Alle unieke race weken
   const raceWeeks = Array.from(
     new Set(data.klassement.flatMap((r) => Object.keys(r.weekPoints)))
-  ).filter((name) => Object.values(RACE_NAMES).includes(name));
+  );
 
   const renderWeekColumn = (row: any, week: string) => {
     const pts = row.weekPoints[week];

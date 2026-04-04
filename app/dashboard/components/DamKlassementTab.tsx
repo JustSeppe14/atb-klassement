@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { DashboardData } from "../page";
-import { RACE_NAMES } from "@/lib/utils";
+
 
 export default function DamesKlassementTab({ data }: { data: DashboardData }) {
   const [filter, setFilter] = useState("all");
@@ -34,7 +34,7 @@ export default function DamesKlassementTab({ data }: { data: DashboardData }) {
 
   const raceWeeks = Array.from(
     new Set(data.klassement.flatMap((r) => Object.keys(r.weekPoints)))
-  ).filter((name) => Object.values(RACE_NAMES).includes(name));
+  );
 
   const renderWeekColumn = (row: any, week: string) => {
     const pts = row.weekPoints[week];

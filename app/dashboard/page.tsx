@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import { RefreshCw } from "lucide-react";
-import { getRaceName, KlassementRow } from "@/lib/utils";
+import { KlassementRow, Race } from "@/lib/utils";
 import KlassementTab from "./components/KlassementTab";
 import RegelmatigheidTab from "./components/RegelmatigheidTab";
 import TeamTab from "./components/TeamTab";
@@ -20,6 +20,7 @@ export interface DashboardData {
   teamSTA: { team: string; punten: number; riders: string[] }[];
   teamMixed: { team: string; punten: number; riders: string[] }[];
   config: { currentWeek: number; isSecondPeriodStarted: boolean };
+  races: Race[];
 }
 
 export default function DashboardPage() {
@@ -54,7 +55,9 @@ export default function DashboardPage() {
             Klassement <span style={{ color: "var(--accent)" }}>2026</span>
           </h1>
           <div style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 4 }}>
-            {data?.config.currentWeek ? `Week ${data.config.currentWeek} — ${getRaceName(data.config.currentWeek)}` : "Laden..."}
+            {data?.config.currentWeek
+              ? `Week ${data.config.currentWeek} — ${data.races?.find((r) => r.sort_order === data.config.currentWeek)?.name ?? ""}`
+              : "Laden..."}
           </div>
         </div>
         <button className="btn-secondary" onClick={fetchData} style={{ display: "flex", alignItems: "center", gap: 8 }}>
