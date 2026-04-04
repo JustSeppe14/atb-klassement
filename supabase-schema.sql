@@ -63,10 +63,15 @@ alter table races enable row level security;
 -- ============================================================
 -- 6. POLICIES (read access for everyone)
 -- ============================================================
-create policy if not exists "Allow read deelnemers"     on deelnemers    for select using (true);
-create policy if not exists "Allow read race_results"   on race_results for select using (true);
-create policy if not exists "Allow read config"         on config       for select using (true);
-create policy if not exists "Allow read races"          on races        for select using (true);
 
--- Write: only service role (API routes use SUPABASE_SERVICE_ROLE_KEY)
--- The service role bypasses RLS by default, so no extra policies needed for writes
+-- Drop policies if they already exist
+drop policy if exists "Allow read deelnemers" on deelnemers;
+drop policy if exists "Allow read race_results" on race_results;
+drop policy if exists "Allow read config" on config;
+drop policy if exists "Allow read races" on races;
+
+-- Create policies
+create policy "Allow read deelnemers"     on deelnemers    for select using (true);
+create policy "Allow read race_results"   on race_results for select using (true);
+create policy "Allow read config"         on config       for select using (true);
+create policy "Allow read races"          on races        for select using (true);
