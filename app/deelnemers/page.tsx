@@ -68,7 +68,7 @@ export default function DeelnemersPage() {
       fetchDeelnemers();
     }
   };
-  console.log("deelnemers", deelnemers);
+
 
   const filtered = deelnemers.filter((d) =>
     search === "" ||

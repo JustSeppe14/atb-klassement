@@ -67,7 +67,7 @@ export function sumBest50Percent(values: (number | null | undefined)[]): number 
   return sorted.slice(0, numToInclude).reduce((a, b) => a + b, 0);
 }
 
-export type Categorie = "STA" | "SEN" | "DAM";
+export type Categorie = "STA" | "SEN" | "DAM" | "VET";
 
 export interface Deelnemer {
   id?: number;
@@ -99,6 +99,7 @@ export interface KlassementRow {
   plaatsSTA?: number;
   plaatsSEN?: number;
   plaatsDAM?: number;
+  plaatsVET?: number;
 }
 
 export interface SeasonConfig {

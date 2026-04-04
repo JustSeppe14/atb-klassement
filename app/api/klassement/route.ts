@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { computeKlassement, computeRegelmatigheid, computeTeamKlassement } from "@/lib/klassement";
+import { computeKlassement, computeRegelmatigheid, computeTeamScores } from "@/lib/klassement";
 import { DEFAULT_CONFIG, SeasonConfig } from "@/lib/utils";
 
 export async function GET() {
@@ -25,11 +25,11 @@ export async function GET() {
     const r = results ?? [];
 
     const klassement = computeKlassement(d, r, config);
-    const regelmatigheid = computeRegelmatigheid(d, r);
-    const teamSTA = computeTeamKlassement(d, klassement, "STA");
-    const teamDAM = computeTeamKlassement(d, klassement, "DAM");
+    const regelmatigheid = computeRegelmatigheid(d, r, config.currentWeek);
+    const teamSTA = computeTeamScores(d, klassement, "STA");
+    const teamMixed = computeTeamScores(d, klassement, "MIXED");
 
-    return NextResponse.json({ klassement, regelmatigheid, teamSTA, teamDAM, config });
+    return NextResponse.json({ klassement, regelmatigheid, teamSTA, teamMixed, config });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

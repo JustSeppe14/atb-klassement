@@ -18,34 +18,30 @@ export function computeKlassement(
 ): KlassementRow[] {
   const { currentWeek, isSecondPeriodStarted, secondPeriodStartWeek } = config;
 
-  // Normalize klasse on all deelnemers
+  // Helper: normalize klasse
   const normalized = deelnemers.map((d) => ({
     ...d,
     klasse: normalizeKlasse(d.klasse),
   }));
 
-  // Group results by week
+  // Helper: punten per week per bib
   const resultsByWeek = new Map<number, RaceResult[]>();
   for (const r of allResults) {
     if (!resultsByWeek.has(r.week)) resultsByWeek.set(r.week, []);
     resultsByWeek.get(r.week)!.push(r);
   }
 
-  // Get all weeks that have results
   const weeksWithResults = [...resultsByWeek.keys()].sort((a, b) => a - b);
 
-  // Build a map: bib -> { raceName -> points }
   const pointsMap = new Map<number, Record<string, number>>();
+  for (const d of normalized) pointsMap.set(d.bib, {});
 
-  for (const deelnemer of normalized) {
-    pointsMap.set(deelnemer.bib, {});
-  }
-
+  // Bereken punten per deelnemer per week
   for (const week of weeksWithResults) {
     const raceName = getRaceName(week);
     const weekResults = resultsByWeek.get(week) ?? [];
 
-    // Group deelnemers by klasse
+    // Per klasse
     const klasseMap = new Map<string, Deelnemer[]>();
     for (const d of normalized) {
       if (!klasseMap.has(d.klasse)) klasseMap.set(d.klasse, []);
@@ -58,33 +54,39 @@ export function computeKlassement(
         .filter((r) => klasseBibs.has(r.bib))
         .sort((a, b) => a.plaats - b.plaats);
 
-      // Assign rank-based points within class
       const bibPoints = new Map<number, number>();
       klasseResults.forEach((r, idx) => {
         const rank = idx + 1;
-        bibPoints.set(r.bib, rank < 60 ? rank : 60);
+        bibPoints.set(r.bib, rank <= 60 ? rank : 60);
       });
 
-      // Assign points (MAX_POINTS for DNS/DNF)
       for (const d of klasseDeelnemers) {
-        const pts = bibPoints.get(d.bib) ?? MAX_POINTS;
-        const existing = pointsMap.get(d.bib) ?? {};
-        existing[raceName] = pts;
-        pointsMap.set(d.bib, existing);
+        const pts = bibPoints.get(d.bib) ?? MAX_POINTS; // DNS/DNF = max
+        pointsMap.get(d.bib)![raceName] = pts;
       }
     }
   }
 
-  // Build rows
-  const rows: KlassementRow[] = normalized.map((d) => {
+  // Helper: som van beste 60%
+  function sumBest60Percent(points: number[]): number {
+    if (!points.length) return 0;
+    const sorted = [...points].sort((a, b) => a - b); // laagste punten = beste
+    const count = Math.ceil(points.length * 0.6);
+    return sorted.slice(0, count).reduce((sum, p) => sum + p, 0);
+  }
+
+  function countPodiums(weekPoints: Record<string, number>) {
+    return Object.values(weekPoints).filter((p) => p <= 3).length;
+  }
+
+  // Bouw klassement rows
+  let rows: KlassementRow[] = normalized.map((d) => {
     const weekPoints = pointsMap.get(d.bib) ?? {};
 
-    // Fill in MAX_POINTS for weeks that have results but rider didn't participate
+    // Vul MAX_POINTS voor niet-deelname
     for (const week of weeksWithResults) {
       const raceName = getRaceName(week);
-      if (weekPoints[raceName] === undefined) {
-        weekPoints[raceName] = MAX_POINTS;
-      }
+      if (weekPoints[raceName] === undefined) weekPoints[raceName] = MAX_POINTS;
     }
 
     const allPointValues = weeksWithResults.map(
@@ -110,97 +112,173 @@ export function computeKlassement(
       categorie: d.categorie,
       team: d.team,
       weekPoints,
-      totaal: sumBest50Percent(allPointValues),
-      eerstePeriode: sumBest50Percent(firstPeriodValues),
-      tweedePeriode: sumBest50Percent(secondPeriodValues),
-      plaatsKlasse: 0, // filled below
+      eerstePeriode: sumBest60Percent(firstPeriodValues),
+      tweedePeriode: sumBest60Percent(secondPeriodValues),
+      totaal: sumBest60Percent([...firstPeriodValues, ...secondPeriodValues]),
+      plaatsKlasse: 0, // wordt per klasse gevuld
     };
   });
 
-  // Compute class rankings
-  const klasseGroups = new Map<string, KlassementRow[]>();
+  // ✅ Rangschikking en plaats per klasse
+  const klasseMap = new Map<string, KlassementRow[]>();
   for (const row of rows) {
-    if (!klasseGroups.has(row.klasse)) klasseGroups.set(row.klasse, []);
-    klasseGroups.get(row.klasse)!.push(row);
+    if (!klasseMap.has(row.klasse)) klasseMap.set(row.klasse, []);
+    klasseMap.get(row.klasse)!.push(row);
   }
 
-  for (const [, group] of klasseGroups.entries()) {
-    group.sort((a, b) => a.totaal - b.totaal);
-    group.forEach((row, idx) => {
-      row.plaatsKlasse = idx + 1;
+  for (const [, klasseRows] of klasseMap.entries()) {
+    // Sorteer op totaal → podium → bib
+    klasseRows.sort((a, b) => {
+      if (a.totaal !== b.totaal) return a.totaal - b.totaal;
+      const aPodium = countPodiums(a.weekPoints);
+      const bPodium = countPodiums(b.weekPoints);
+      if (aPodium !== bPodium) return bPodium - aPodium;
+      return a.bib - b.bib;
+    });
+
+    // Plaats binnen de klasse
+    klasseRows.forEach((r, idx) => {
+      r.plaatsKlasse = idx + 1;
     });
   }
 
-  // Compute category rankings (STA, SEN, DAM) per klasse
-  for (const [, group] of klasseGroups.entries()) {
-    const sorted = [...group].sort((a, b) => a.totaal - b.totaal);
-    const catCounters: Record<string, number> = { STA: 1, SEN: 1, DAM: 1 };
-    for (const row of sorted) {
-      const cat = row.categorie as string;
-      if (cat in catCounters) {
-        if (cat === "STA") row.plaatsSTA = catCounters[cat]++;
-        if (cat === "SEN") row.plaatsSEN = catCounters[cat]++;
-        if (cat === "DAM") row.plaatsDAM = catCounters[cat]++;
-      }
-    }
-  }
-
-  // Final sort: by klasse then totaal
-  return rows.sort((a, b) =>
-    a.klasse !== b.klasse
-      ? a.klasse.localeCompare(b.klasse)
-      : a.totaal - b.totaal
-  );
+  return rows;
 }
-
 export function computeRegelmatigheid(
   deelnemers: Deelnemer[],
-  allResults: RaceResult[]
+  allResults: RaceResult[],
+  totalRacesHeld: number 
 ): { bib: number; naam: string; klasse: string; aantalDeelnames: number; punten: number }[] {
-  const normalized = deelnemers.map((d) => ({
-    ...d,
-    klasse: normalizeKlasse(d.klasse),
-  }));
+  
+  const MAX_POINTS_ABSENT = 80;
+  const CAP_POINTS_FINISH = 60;
 
-  const participationMap = new Map<number, number>(); // bib -> count
+  // 1. Group all "plaats" results by rider (bib)
+  const riderResultsMap = new Map<number, number[]>();
+
   for (const r of allResults) {
-    participationMap.set(r.bib, (participationMap.get(r.bib) ?? 0) + 1);
+    const ranks = riderResultsMap.get(r.bib) ?? [];
+    
+    // CAP LOGIC: If rank is 61, it becomes 60.
+    const score = r.plaats >= CAP_POINTS_FINISH ? CAP_POINTS_FINISH : r.plaats;
+    
+    ranks.push(score);
+    riderResultsMap.set(r.bib, ranks);
   }
 
-  return normalized
-    .map((d) => ({
+  return deelnemers.map((d) => {
+    const actualRanks = riderResultsMap.get(d.bib) ?? [];
+    const aantalDeelnames = actualRanks.length;
+
+    // 2. Fill missing races with 80 points
+    const missingCount = totalRacesHeld - aantalDeelnames;
+    const allScores = [...actualRanks, ...Array(missingCount).fill(MAX_POINTS_ABSENT)];
+
+    // 3. sum_without_worst logic
+    let finalPunten = 0;
+    if (allScores.length > 0) {
+      const totalSum = allScores.reduce((a, b) => a + b, 0);
+      const worstResult = Math.max(...allScores);
+      finalPunten = totalSum - worstResult;
+    }
+
+    return {
       bib: d.bib,
       naam: d.naam,
-      klasse: d.klasse,
-      aantalDeelnames: participationMap.get(d.bib) ?? 0,
-      punten: participationMap.get(d.bib) ?? 0,
-    }))
-    .sort((a, b) => b.punten - a.punten);
+      klasse: normalizeKlasse(d.klasse),
+      aantalDeelnames,
+      punten: finalPunten,
+    };
+  })
+  // 4. SORT: Lowest total points = 1st place in standings
+  .sort((a, b) => {
+    if (a.punten !== b.punten) {
+      return a.punten - b.punten; 
+    }
+    // Tie-breaker: person with more starts ranks higher
+    return b.aantalDeelnames - a.aantalDeelnames;
+  });
 }
 
-export function computeTeamKlassement(
+
+
+export function computeTeamScores(
   deelnemers: Deelnemer[],
   klassement: KlassementRow[],
-  categorie?: Categorie
+  mode: "STA" | "MIXED",
+  maxPoints = 60
 ): { team: string; punten: number; riders: string[] }[] {
-  const filtered = categorie
-    ? klassement.filter((r) => r.categorie === categorie)
-    : klassement;
+  // Filter valid teams
+  const validDeelnemers = deelnemers.filter(
+    (d): d is Deelnemer & { team: string } =>
+      typeof d.team === "string" &&
+      d.team.trim() !== "" &&
+      d.team !== "0"
+  );
 
-  const teamMap = new Map<string, { punten: number; riders: string[] }>();
+  // Aggregate riders per team
+  const teamMap = new Map<
+    string,
+    { riders: { naam: string; punten: number; categorie: Categorie }[] }
+  >();
 
-  for (const row of filtered) {
-    const d = deelnemers.find((d) => d.bib === row.bib);
-    const team = d?.team ?? row.team ?? "Geen team";
-    if (!team || team.trim() === "") continue;
+  for (const d of validDeelnemers) {
+    // Filter STA if mode is STA
+    if (mode === "STA" && d.categorie !== "STA") continue;
 
-    if (!teamMap.has(team)) teamMap.set(team, { punten: 0, riders: [] });
-    const entry = teamMap.get(team)!;
-    entry.punten += row.totaal;
-    entry.riders.push(row.naam);
+    const row = klassement.find((r) => r.bib === d.bib);
+    if (!row) continue;
+
+    const punten = row.totaal ?? maxPoints;
+    const team = d.team;
+
+    if (!teamMap.has(team)) teamMap.set(team, { riders: [] });
+    teamMap.get(team)!.riders.push({
+      naam: d.naam,
+      punten,
+      categorie: d.categorie,
+    });
   }
 
-  return [...teamMap.entries()]
-    .map(([team, v]) => ({ team, ...v }))
-    .sort((a, b) => a.punten - b.punten);
+  // Compute total points per team
+  const result = [...teamMap.entries()].map(([team, { riders }]) => {
+    let selectedRiders: { naam: string; punten: number }[] = [];
+
+    if (mode === "STA") {
+      // Take top 4 STA riders
+      selectedRiders = riders
+        .sort((a, b) => a.punten - b.punten)
+        .slice(0, 4)
+        .map(({ naam, punten }) => ({ naam, punten }));
+    } else if (mode === "MIXED") {
+      // Daguitslag: 2 STA, 1 SEN, 1 VET/DAM
+      const staRiders = riders
+        .filter((r) => r.categorie === "STA")
+        .sort((a, b) => a.punten - b.punten)
+        .slice(0, 2);
+      const senRiders = riders
+        .filter((r) => r.categorie === "SEN")
+        .sort((a, b) => a.punten - b.punten)
+        .slice(0, 1);
+      const vetRiders = riders
+        .filter((r) => r.categorie === "VET" || r.categorie === "DAM")
+        .sort((a, b) => a.punten - b.punten)
+        .slice(0, 1);
+
+      selectedRiders = [...staRiders, ...senRiders, ...vetRiders].map(
+        ({ naam, punten }) => ({ naam, punten })
+      );
+    }
+
+    const totalPunten = selectedRiders.reduce((sum, r) => sum + r.punten, 0);
+
+    return {
+      team,
+      punten: totalPunten,
+      riders: selectedRiders.map((r) => r.naam),
+    };
+  });
+
+  // Sort ascending by punten
+  return result.sort((a, b) => a.punten - b.punten);
 }
