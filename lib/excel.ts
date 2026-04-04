@@ -24,36 +24,67 @@ export function parseFinishFile(buffer: ArrayBuffer): RaceResult[] {
 }
 
 // --- PARSE DEELNEMERS FILE ---
-export function parseDeelnemersFile(buffer: ArrayBuffer): Deelnemer[] {
-  const wb = XLSX.read(buffer, { type: "array" });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  // Header is on row 7 (index 6)
-  const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws, {
-    range: 6,
-    defval: null,
+export function parseDeelnemersFile(buffer: ArrayBuffer) {
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+  const rows: any[][] = XLSX.utils.sheet_to_json(sheet, {
+    header: 1,
+    raw: false,
   });
 
-  const deelnemers: Deelnemer[] = [];
-  for (const row of rows) {
-    const bib = parseInt(
-      String(row["nummer"] ?? row["Nummer"] ?? row["bib"] ?? row["Nr."] ?? "")
-    );
-    const naam = String(
-      row["naam"] ?? row["Naam"] ?? row["name"] ?? ""
-    ).trim().toLowerCase();
-    const klasse = normalizeKlasse(
-      String(row["klasse"] ?? row["Klasse"] ?? "").trim()
-    );
-    const categorie = String(
-      row["categorie"] ?? row["Categorie"] ?? row["cat"] ?? row["Cat."] ?? ""
-    ).trim() as Deelnemer["categorie"];
-    const team = String(row["team"] ?? row["Team"] ?? "").trim();
+  // 🔍 zoek header
+  const headerIndex = rows.findIndex((row) =>
+    row.some((cell) =>
+      String(cell).toLowerCase().includes("nummer")
+    )
+  );
 
-    if (!isNaN(bib) && naam && klasse) {
-      deelnemers.push({ bib, naam, klasse, categorie, team: team || undefined });
-    }
-  }
-  return deelnemers;
+  if (headerIndex === -1) return [];
+
+  const headers = rows[headerIndex].map((h) =>
+    String(h).toLowerCase().trim()
+  );
+
+  const dataRows = rows.slice(headerIndex + 1);
+
+  return dataRows
+    .map((row) => {
+      if (!row || row.length === 0) return null;
+
+      const get = (name: string) => {
+        const idx = headers.findIndex((h) => h.includes(name));
+        return idx !== -1 ? row[idx] : "";
+      };
+
+      const naam = String(get("naam") || "").trim();
+      if (!naam) return null;
+
+      const bibRaw = get("nummer");
+
+      const bib =
+        typeof bibRaw === "number"
+          ? bibRaw
+          : parseInt(String(bibRaw).replace(/\D/g, "")) || 0;
+
+      const klasse = String(get("klasse") || "").trim().toUpperCase();
+
+      let categorie = String(get("cat") || "").trim().toUpperCase();
+      if (!["STA", "SEN", "DAM"].includes(categorie)) {
+        categorie = "STA";
+      }
+
+      const team = String(get("team") || "").trim();
+
+      return {
+        bib,
+        naam,
+        klasse,
+        categorie,
+        team: team || null,
+      };
+    })
+    .filter(Boolean);
 }
 
 // --- EXPORT KLASSEMENT TO EXCEL ---

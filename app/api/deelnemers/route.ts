@@ -3,20 +3,20 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { parseDeelnemersFile } from "@/lib/excel";
 
 export async function GET() {
-  try {
-    const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
-      .from("deelnemers")
-      .select("*")
-      .order("bib");
-    if (error) throw error;
-    return NextResponse.json(data);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
-}
+  const supabase = getSupabaseAdmin();
 
+  const { data, error } = await supabase
+    .from("deelnemers")
+    .select("*")
+    .order("bib");
+
+  if (error) {
+    console.error("GET deelnemers error:", error);
+    return NextResponse.json([]); // 🔥 NOOIT crashen
+  }
+
+  return NextResponse.json(Array.isArray(data) ? data : []);
+}
 export async function POST(req: NextRequest) {
   try {
     const contentType = req.headers.get("content-type") ?? "";
