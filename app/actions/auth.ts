@@ -8,12 +8,12 @@ export async function login(formData: FormData) {
   const passwordInput = formData.get("password");
 
   // Fetch from process.env
-  const ADMIN_USER = process.env.ADMIN_USERNAME;
-  const ADMIN_PASS = process.env.ADMIN_PASSWORD;
+  const ADMIN_USER = process.env.AUTH_USER;
+  const ADMIN_PASS = process.env.AUTH_PASS;
 
   // Safety check: ensure env variables exist
   if (!ADMIN_USER || !ADMIN_PASS) {
-    console.error("Auth Error: ADMIN_USERNAME or ADMIN_PASSWORD not set in environment.");
+    console.error("Auth Error: AUTH_USER or AUTH_PASS not set in environment.");
     return { error: "Server configuratiefout" };
   }
 
