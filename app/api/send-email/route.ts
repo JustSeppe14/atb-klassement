@@ -1,9 +1,12 @@
+// app/api/email/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { exportKlassementToExcel } from "@/lib/excel";
 import { computeKlassement, computeRegelmatigheid, computeTeamScores } from "@/lib/klassement";
 import { DEFAULT_CONFIG, SeasonConfig } from "@/lib/utils";
+import { parseScoringConfig } from "@/lib/scoring-config";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,11 +30,13 @@ export async function POST(req: NextRequest) {
     ]);
 
     const config: SeasonConfig = {
-      currentWeek: configData?.current_week ?? DEFAULT_CONFIG.currentWeek,
+      currentWeek:           configData?.current_week            ?? DEFAULT_CONFIG.currentWeek,
       isSecondPeriodStarted: configData?.is_second_period_started ?? false,
       secondPeriodStartWeek: configData?.second_period_start_week ?? 12,
-      seasonEnded: configData?.season_ended ?? false,
+      seasonEnded:           configData?.season_ended             ?? false,
     };
+
+    const scoringCfg = parseScoringConfig(configData ?? {});
 
     const EXCLUDED = ["", "vrij"];
     const races = (racesData ?? []).filter(
@@ -41,10 +46,10 @@ export async function POST(req: NextRequest) {
     const d = deelnemers ?? [];
     const r = results ?? [];
 
-    const klassement = computeKlassement(d, r, config, races);
-    const regelmatigheid = computeRegelmatigheid(d, r, config.currentWeek);
-    const teamSTA = computeTeamScores(d, klassement, "STA");
-    const teamMixed = computeTeamScores(d, klassement, "MIXED");
+    const klassement     = computeKlassement(d, r, config, races, scoringCfg);
+    const regelmatigheid = computeRegelmatigheid(d, r, config.currentWeek, scoringCfg);
+    const teamSTA        = computeTeamScores(d, klassement, "STA", scoringCfg);
+    const teamMixed      = computeTeamScores(d, klassement, "MIXED", scoringCfg);
 
     const excelBuffer = exportKlassementToExcel(klassement, regelmatigheid, teamSTA, teamMixed, races);
 
@@ -69,7 +74,8 @@ export async function POST(req: NextRequest) {
         {
           filename: `klassement_week_${config.currentWeek}.xlsx`,
           content: excelBuffer,
-          contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          contentType:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         },
       ],
     });

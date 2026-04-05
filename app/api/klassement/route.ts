@@ -1,7 +1,10 @@
+// app/api/klassement/route.ts  (JSON response for the frontend)
+
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { computeKlassement, computeRegelmatigheid, computeTeamScores } from "@/lib/klassement";
 import { DEFAULT_CONFIG, SeasonConfig } from "@/lib/utils";
+import { parseScoringConfig } from "@/lib/scoring-config";
 
 export async function GET() {
   try {
@@ -20,11 +23,13 @@ export async function GET() {
     ]);
 
     const config: SeasonConfig = {
-      currentWeek: configData?.current_week ?? DEFAULT_CONFIG.currentWeek,
+      currentWeek:           configData?.current_week            ?? DEFAULT_CONFIG.currentWeek,
       isSecondPeriodStarted: configData?.is_second_period_started ?? false,
       secondPeriodStartWeek: configData?.second_period_start_week ?? 12,
-      seasonEnded: configData?.season_ended ?? false,
+      seasonEnded:           configData?.season_ended             ?? false,
     };
+
+    const scoringCfg = parseScoringConfig(configData ?? {});
 
     const EXCLUDED = ["", "vrij"];
     const races = (racesData ?? []).filter(
@@ -34,10 +39,10 @@ export async function GET() {
     const d = deelnemers ?? [];
     const r = results ?? [];
 
-    const klassement = computeKlassement(d, r, config, races);
-    const regelmatigheid = computeRegelmatigheid(d, r, config.currentWeek);
-    const teamSTA = computeTeamScores(d, klassement, "STA");
-    const teamMixed = computeTeamScores(d, klassement, "MIXED");
+    const klassement     = computeKlassement(d, r, config, races, scoringCfg);
+    const regelmatigheid = computeRegelmatigheid(d, r, config.currentWeek, scoringCfg);
+    const teamSTA        = computeTeamScores(d, klassement, "STA", scoringCfg);
+    const teamMixed      = computeTeamScores(d, klassement, "MIXED", scoringCfg);
 
     return NextResponse.json({ klassement, regelmatigheid, teamSTA, teamMixed, config, races });
   } catch (err: unknown) {
