@@ -1,25 +1,34 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Upload, Users, Mail, Settings, Download, Trophy } from "lucide-react";
+import { 
+  LayoutDashboard, Upload, Users, Mail, Settings, 
+  Download, Trophy, LogOut, LogIn 
+} from "lucide-react";
+import { logout } from "@/app/actions/auth";
 
-const nav = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/upload", label: "Uitslag uploaden", icon: Upload },
-  { href: "/deelnemers", label: "Deelnemers", icon: Users },
-  { href: "/email", label: "E-mail versturen", icon: Mail },
-  { href: "/instellingen", label: "Instellingen", icon: Settings },
+// Define all possible links
+const allNavItems = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, protected: false },
+  { href: "/upload", label: "Uitslag uploaden", icon: Upload, protected: true },
+  { href: "/deelnemers", label: "Deelnemers", icon: Users, protected: true },
+  { href: "/email", label: "E-mail versturen", icon: Mail, protected: true },
+  { href: "/instellingen", label: "Instellingen", icon: Settings, protected: true },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ isAdmin }: { isAdmin: boolean }) {
   const path = usePathname();
+
+  // Filter items: show if not protected OR if user is admin
+  const visibleNav = allNavItems.filter(item => !item.protected || isAdmin);
+
   return (
     <aside style={{
-      width: 220, minHeight: "100vh", background: "var(--surface)",
+      width: 220, height: "100vh", background: "var(--surface)",
       borderRight: "1px solid var(--border)", display: "flex",
       flexDirection: "column", padding: "0 0 24px 0", flexShrink: 0,
     }}>
-      {/* Logo */}
+      {/* Logo Section */}
       <div style={{ padding: "28px 20px 24px", borderBottom: "1px solid var(--border)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{
@@ -36,10 +45,10 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Nav */}
+      {/* Navigation Links */}
       <nav style={{ flex: 1, padding: "16px 12px" }}>
-        {nav.map(({ href, label, icon: Icon }) => {
-          const active = path.startsWith(href);
+        {visibleNav.map(({ href, label, icon: Icon }) => {
+          const active = path === href || (href !== "/" && path.startsWith(href));
           return (
             <Link key={href} href={href} style={{
               display: "flex", alignItems: "center", gap: 10,
@@ -58,15 +67,17 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Download button */}
-      <div style={{ padding: "0 12px" }}>
-        <a href="/api/download-excel" style={{ textDecoration: "none" }}>
+      {/* Bottom Actions (Excel & Auth) */}
+        {isAdmin && (<a href="/api/download-excel" style={{ textDecoration: "none" }}>
           <button className="btn-secondary" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
             <Download size={14} />
             Download Excel
           </button>
-        </a>
-      </div>
+        </a>)}
+        
+
+        
+      
     </aside>
   );
 }
