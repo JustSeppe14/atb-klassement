@@ -41,6 +41,8 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const currentYear = new Date().getFullYear();
+
 
 
 
@@ -52,7 +54,7 @@ export default function DashboardPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
         <div>
           <h1 style={{ fontSize: 32, margin: 0, color: "var(--text)" }}>
-            Klassement <span style={{ color: "var(--accent)" }}>2026</span>
+            Klassement <span style={{ color: "var(--accent)" }}>{currentYear}</span>
           </h1>
           <div style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 4 }}>
             {data?.config.currentWeek

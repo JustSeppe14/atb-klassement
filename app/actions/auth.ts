@@ -4,19 +4,18 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 export async function login(formData: FormData) {
-  const usernameInput = formData.get("username");
-  const passwordInput = formData.get("password");
+  const usernameInput = formData.get("username") as string;
+  const passwordInput = formData.get("password") as string;
 
-  // Fetch from process.env
   const ADMIN_USER = process.env.AUTH_USER;
   const ADMIN_PASS = process.env.AUTH_PASS;
 
-  // Safety check: ensure env variables exist
+
   if (!ADMIN_USER || !ADMIN_PASS) {
-    console.error("Auth Error: AUTH_USER or AUTH_PASS not set in environment.");
-    return { error: "Server configuratiefout" };
+    return { error: "Server configuration error: ENV not found." };
   }
 
+  // Simple direct comparison
   if (usernameInput === ADMIN_USER && passwordInput === ADMIN_PASS) {
     const cookieStore = await cookies();
     
@@ -25,10 +24,9 @@ export async function login(formData: FormData) {
       secure: process.env.NODE_ENV === "production",
       maxAge: 60 * 60 * 24 * 7, // 1 week
       path: "/",
-      sameSite: "lax", // Standard security practice
+      sameSite: "lax",
     });
 
-    // Important: redirect must be outside the try/catch if you add one later
     redirect("/dashboard"); 
   } else {
     return { error: "Foutieve gebruikersnaam of wachtwoord" };
