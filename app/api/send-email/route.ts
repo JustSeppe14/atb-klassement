@@ -66,13 +66,13 @@ export async function POST(req: NextRequest) {
     await transporter.sendMail({
       from: process.env.EMAIL_ACCOUNT,
       to: recipients.join(","),
-      subject: subject ?? `ATB Klassement - Week ${config.currentWeek}`,
+      subject: subject ?? `ATB Klassement`,
       text:
         body ??
-        `Beste,\n\nIn bijlage vindt u het klassement van week ${config.currentWeek}.\n\nMet vriendelijke groeten,\nATB`,
+        `Beste,\n\nIn bijlage vindt u het aangepaste klassement.\n\nMet vriendelijke groeten,\nATB`,
       attachments: [
         {
-          filename: `klassement_week_${config.currentWeek}.xlsx`,
+          filename: `klassement.xlsx`,
           content: excelBuffer,
           contentType:
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

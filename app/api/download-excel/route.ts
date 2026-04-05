@@ -46,12 +46,11 @@ export async function GET() {
     const teamMixed      = computeTeamScores(d, klassement, "MIXED", scoringCfg);
 
     const buffer = exportKlassementToExcel(klassement, regelmatigheid, teamSTA, teamMixed, races);
-    const week = config.currentWeek;
 
     return new NextResponse(buffer as unknown as BodyInit, {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="klassement_week_${week}.xlsx"`,
+        "Content-Disposition": `attachment; filename="klassement.xlsx"`,
       },
     });
   } catch (err: unknown) {
