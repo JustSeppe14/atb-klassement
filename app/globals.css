@@ -18,6 +18,9 @@
   --blue: #4a90d9;
   --dam-pink: #e879a0;
   --orange: #FF8C00;
+
+
+  --side-bar-width: 220px;
 }
 
 * { box-sizing: border-box; }

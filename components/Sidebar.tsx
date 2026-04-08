@@ -24,7 +24,7 @@ export default function Sidebar({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <aside style={{
-      width: 220, height: "100vh", background: "var(--surface)",
+      width: "var(--side-bar-width)", height: "100vh", background: "var(--surface)",
       borderRight: "1px solid var(--border)", display: "flex",
       flexDirection: "column", padding: "0 0 24px 0", flexShrink: 0,
     }}>
