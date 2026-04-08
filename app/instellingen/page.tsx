@@ -201,7 +201,30 @@ export default function InstellingenPage() {
 
   const toggle = (field: keyof SeasonConfig) => setConfig((c) => ({ ...c, [field]: !c[field] }));
 
-  if (loading) return <div style={{ color: "var(--text-muted)", padding: 40, fontFamily: "'Barlow Condensed', sans-serif" }}>Laden...</div>;
+  if (loading) {
+  return (
+    <div style={{ 
+      display: "flex", 
+      flexDirection: "column",
+      alignItems: "center", 
+      justifyContent: "center", 
+      minHeight: "80vh", // Centers vertically within most of the viewport
+      gap: 16 
+    }}>
+      <div className="spinner" />
+      <div style={{ 
+        color: "var(--text-muted)", 
+        fontFamily: "'Barlow Condensed', sans-serif",
+        textTransform: "uppercase",
+        letterSpacing: "0.1em",
+        fontSize: 14,
+        fontWeight: 600
+      }}>
+        Laden...
+      </div>
+    </div>
+  );
+}
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 20px 120px 20px" }}>

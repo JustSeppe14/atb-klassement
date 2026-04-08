@@ -55,4 +55,16 @@ h1, h2, h3, h4 { font-family: 'Barlow Condensed', sans-serif; font-weight: 800; 
 .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 8px; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.04em; z-index: 9999; animation: slideUp 0.2s ease; }
 .toast-success { background: var(--green); color: #0f1117; }
 .toast-error { background: var(--red); color: #fff; }
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top: 3px solid var(--accent); /* Uses your theme accent color */
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
 @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
