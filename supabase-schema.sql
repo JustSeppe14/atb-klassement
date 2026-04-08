@@ -22,9 +22,13 @@ create table if not exists race_results (
   week        integer not null check (week >= 1 and week <= 20),
   bib         integer not null,
   plaats      integer not null,
+  klasse      text,       -- klasse the rider competed in that week (null = current klasse)
   created_at  timestamptz default now(),
   unique (week, bib)
 );
+
+-- Migration: add klasse column if upgrading from an existing install
+alter table race_results add column if not exists klasse text;
 
 -- ============================================================
 -- 3. CONFIG (single row, id=1)

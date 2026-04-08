@@ -50,6 +50,8 @@ export interface RaceResult {
   week: number;
   bib: number;
   plaats: number;
+  /** Klasse the rider competed in that week. Null/undefined = current klasse. */
+  klasse?: string | null;
 }
 
 export interface KlassementRow {

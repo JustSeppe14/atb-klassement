@@ -22,7 +22,7 @@ export function computeKlassement(
   scoringCfg: ScoringConfig = DEFAULT_SCORING_CONFIG
 ): KlassementRow[] {
   const { isSecondPeriodStarted, secondPeriodStartWeek } = config;
-  const { maxPoints, capFinishPosition, bestPct } = scoringCfg;
+  const { maxPoints, capFinishPosition, bestPct, klasseSwitchPoints } = scoringCfg;
   const bestFraction = bestPct / 100;
 
   const raceByOrder = new Map<number, string>(
@@ -43,6 +43,13 @@ export function computeKlassement(
 
   const weeksWithResults = [...resultsByWeek.keys()].sort((a, b) => a - b);
 
+  // Map bib -> current klasse (normalized) for quick lookup
+  const currentKlasseByBib = new Map<number, string>(
+    normalized.map((d) => [d.bib, d.klasse])
+  );
+
+  // Fixed points awarded when a rider races in their OLD klasse after a switch
+
   const pointsMap = new Map<number, Record<string, number>>();
   for (const d of normalized) pointsMap.set(d.bib, {});
 
@@ -50,6 +57,26 @@ export function computeKlassement(
     const raceName = getRaceName(week);
     const weekResults = resultsByWeek.get(week) ?? [];
 
+    // Separate results into:
+    //   - normal: rider competed in their current klasse (or no snapshot stored)
+    //   - switched: rider competed in a different (old) klasse this week
+    const normalResults: RaceResult[] = [];
+    const switchedBibs = new Set<number>();
+
+    for (const r of weekResults) {
+      const currentKlasse = currentKlasseByBib.get(r.bib);
+      const raceKlasse = r.klasse ? normalizeKlasse(r.klasse) : currentKlasse;
+
+      if (currentKlasse && raceKlasse && raceKlasse !== currentKlasse) {
+        // Rider has since switched klasse — this result is in their old klasse
+        switchedBibs.add(r.bib);
+        pointsMap.get(r.bib)![raceName] = klasseSwitchPoints;
+      } else {
+        normalResults.push(r);
+      }
+    }
+
+    // Score normal results within each klasse group
     const klasseMap = new Map<string, Deelnemer[]>();
     for (const d of normalized) {
       if (!klasseMap.has(d.klasse)) klasseMap.set(d.klasse, []);
@@ -57,8 +84,10 @@ export function computeKlassement(
     }
 
     for (const [, klasseDeelnemers] of klasseMap.entries()) {
-      const klasseBibs = new Set(klasseDeelnemers.map((d) => d.bib));
-      const klasseResults = weekResults
+      const klasseBibs = new Set(
+        klasseDeelnemers.map((d) => d.bib).filter((bib) => !switchedBibs.has(bib))
+      );
+      const klasseResults = normalResults
         .filter((r) => klasseBibs.has(r.bib))
         .sort((a, b) => a.plaats - b.plaats);
 
@@ -69,6 +98,7 @@ export function computeKlassement(
       });
 
       for (const d of klasseDeelnemers) {
+        if (switchedBibs.has(d.bib)) continue; // already assigned 50 pts above
         const pts = bibPoints.get(d.bib) ?? maxPoints;
         pointsMap.get(d.bib)![raceName] = pts;
       }
@@ -218,12 +248,19 @@ export function computeTeamScores(
     { riders: { naam: string; punten: number; categorie: Categorie }[] }
   >();
 
-  for (const d of validDeelnemers) {
-    if (mode === "STA" && d.categorie !== "STA") continue;
+  // Build a set of bibs that have at least one actual race result
+  // (weekPoints are pre-filled with maxPoints for absent weeks, so a rider
+  //  who never raced will have ALL values equal to maxPoints)
+  const bibsWithResults = new Set(
+    klassement
+      .filter((r) => Object.values(r.weekPoints).some((p) => p < maxPoints))
+      .map((r) => r.bib)
+  );
 
+  for (const d of validDeelnemers) {
     const row = klassement.find((r) => r.bib === d.bib);
     if (!row) continue;
-    if (row.totaal >= maxPoints) continue;
+    if (!bibsWithResults.has(d.bib)) continue; // never raced, skip
 
     const punten = row.totaal ?? maxPoints;
     if (!teamMap.has(d.team)) teamMap.set(d.team, { riders: [] });
@@ -235,7 +272,7 @@ export function computeTeamScores(
 
     for (const slot of slots) {
       const eligible = riders
-        .filter((r) => r.categorie === slot.cat)
+        .filter((r) => slot.cat === null || r.categorie === slot.cat)
         .sort((a, b) => a.punten - b.punten)
         .slice(0, slot.count);
       selectedRiders.push(...eligible.map(({ naam, punten }) => ({ naam, punten })));

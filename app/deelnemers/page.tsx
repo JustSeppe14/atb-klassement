@@ -133,7 +133,7 @@ export default function DeelnemersPage() {
     search === "" ||
     d.naam.toLowerCase().includes(search.toLowerCase()) ||
     String(d.bib).includes(search) ||
-    d.klasse.toLowerCase().includes(search.toLowerCase())
+    d.klasse.toLowerCase().includes(search.toLowerCase()) || d.team?.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -208,7 +208,7 @@ export default function DeelnemersPage() {
       {/* Search */}
       <div style={{ position: "relative", marginBottom: 16 }}>
         <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
-        <input className="input" placeholder="Zoek op naam, nummer of klasse..." style={{ width: "100%", paddingLeft: 36 }} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input className="input" placeholder="Zoek op naam, nummer, klasse of team..." style={{ width: "100%", paddingLeft: 36 }} value={search} onChange={(e) => setSearch(e.target.value)} />
       </div>
 
       {/* Table */}

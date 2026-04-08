@@ -5,7 +5,7 @@ import Toast from "@/components/Toast";
 import { SeasonConfig, DEFAULT_CONFIG, Race } from "@/lib/utils";
 import { ScoringConfig, DEFAULT_SCORING_CONFIG, TeamSlot } from "@/lib/scoring-config";
 
-const CATEGORIES = ["STA", "SEN", "DAM", "VET"] as const;
+const CATEGORIES = ["ANY", "STA", "SEN", "DAM", "VET"] as const;
 
 const labelStyle: React.CSSProperties = {
   display: "block",
@@ -66,9 +66,10 @@ export default function InstellingenPage() {
           maxPoints:         configData.maxPoints         ?? DEFAULT_SCORING_CONFIG.maxPoints,
           capFinishPosition: configData.capFinishPosition ?? DEFAULT_SCORING_CONFIG.capFinishPosition,
           bestPct:           configData.bestPct           ?? DEFAULT_SCORING_CONFIG.bestPct,
-          regAbsentPoints:   configData.regAbsentPoints   ?? DEFAULT_SCORING_CONFIG.regAbsentPoints,
-          regCapFinish:      configData.regCapFinish      ?? DEFAULT_SCORING_CONFIG.regCapFinish,
-          maxWeeks:          configData.maxWeeks          ?? DEFAULT_SCORING_CONFIG.maxWeeks,
+          regAbsentPoints:     configData.regAbsentPoints     ?? DEFAULT_SCORING_CONFIG.regAbsentPoints,
+          regCapFinish:        configData.regCapFinish        ?? DEFAULT_SCORING_CONFIG.regCapFinish,
+          maxWeeks:            configData.maxWeeks            ?? DEFAULT_SCORING_CONFIG.maxWeeks,
+          klasseSwitchPoints:  configData.klasseSwitchPoints  ?? DEFAULT_SCORING_CONFIG.klasseSwitchPoints,
           teamStaSlots:      configData.teamStaSlots      ?? DEFAULT_SCORING_CONFIG.teamStaSlots,
           teamMixedSlots:    configData.teamMixedSlots    ?? DEFAULT_SCORING_CONFIG.teamMixedSlots,
         });
@@ -346,6 +347,19 @@ export default function InstellingenPage() {
             />
             <div style={hintStyle}>Max punten voor een gefinisht resultaat</div>
           </div>
+
+          <div>
+            <label style={labelStyle}>Klassewisselpunten</label>
+            <input
+              type="number"
+              className="input"
+              style={{ width: "100%" }}
+              min={1}
+              value={scoring.klasseSwitchPoints}
+              onChange={(e) => setNum("klasseSwitchPoints", e.target.value)}
+            />
+            <div style={hintStyle}>Vaste punten voor ritten gereden in de oude klasse na een klassewissel</div>
+          </div>
         </div>
       </div>
 
@@ -365,11 +379,14 @@ export default function InstellingenPage() {
                 <select
                   className="input"
                   style={{ flex: 1 }}
-                  value={slot.cat}
-                  onChange={(e) => updateSlot(mode, idx, { cat: e.target.value as TeamSlot["cat"] })}
+                  value={slot.cat ?? "ANY"}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    updateSlot(mode, idx, { cat: val === "ANY" ? null : val as TeamSlot["cat"] });
+                  }}
                 >
                   {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>{c === "ANY" ? "Alle categorieën" : c}</option>
                   ))}
                 </select>
                 <input

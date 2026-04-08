@@ -18,10 +18,25 @@ export async function POST(req: NextRequest) {
     if (results.length === 0)
       return NextResponse.json({ error: "No valid results found in file. Check column names (bib, pl)." }, { status: 400 });
 
-    // Attach week number
-    const withWeek = results.map((r) => ({ ...r, week }));
-
     const supabase = getSupabaseAdmin();
+
+    // Fetch current klasse for all bibs so we can snapshot it on the result row
+    const bibs = results.map((r) => r.bib);
+    const { data: deelnemers } = await supabase
+      .from("deelnemers")
+      .select("bib, klasse")
+      .in("bib", bibs);
+
+    const klasseByBib = new Map<number, string>(
+      (deelnemers ?? []).map((d: { bib: number; klasse: string }) => [d.bib, d.klasse])
+    );
+
+    // Attach week number and current klasse snapshot
+    const withWeek = results.map((r) => ({
+      ...r,
+      week,
+      klasse: klasseByBib.get(r.bib) ?? null,
+    }));
 
     // Delete existing results for this week first
     await supabase.from("race_results").delete().eq("week", week);
