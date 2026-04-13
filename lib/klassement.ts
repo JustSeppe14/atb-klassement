@@ -12,6 +12,17 @@ import {
 import { ScoringConfig, DEFAULT_SCORING_CONFIG } from "./scoring-config";
 
 // ---------------------------------------------------------------------------
+// KlasseSwitch — a single recorded klasse change for one rider
+// ---------------------------------------------------------------------------
+export interface KlasseSwitch {
+  bib: number;
+  old_klasse: string;
+  new_klasse: string;
+  /** sort_order of the first race in the new klasse. Null = not yet linked to a race. */
+  from_week: number | null;
+}
+
+// ---------------------------------------------------------------------------
 // computeKlassement
 // ---------------------------------------------------------------------------
 export function computeKlassement(
@@ -19,7 +30,8 @@ export function computeKlassement(
   allResults: RaceResult[],
   config: SeasonConfig,
   races: Race[],
-  scoringCfg: ScoringConfig = DEFAULT_SCORING_CONFIG
+  scoringCfg: ScoringConfig = DEFAULT_SCORING_CONFIG,
+  klasseSwitches: KlasseSwitch[] = []
 ): KlassementRow[] {
   const { isSecondPeriodStarted, secondPeriodStartWeek } = config;
   const { maxPoints, capFinishPosition, bestPct, klasseSwitchPoints } = scoringCfg;
@@ -35,6 +47,69 @@ export function computeKlassement(
     klasse: normalizeKlasse(d.klasse),
   }));
 
+  // Build a lookup: for each (bib, week) → what klasse should this rider be scored in?
+  // Logic:
+  //   - Start with the rider's EARLIEST known klasse (= current klasse if no history,
+  //     or the oldest old_klasse from history)
+  //   - Each switch in history bumps the effective klasse from that from_week onwards
+  //   - If from_week is null, we fall back to comparing with the stored snapshot
+  //     on the race_result row (existing behaviour)
+  //
+  // switchesByBib: bib → sorted list of { from_week, new_klasse }
+  const switchesByBib = new Map<number, { from_week: number; new_klasse: string }[]>();
+  for (const sw of klasseSwitches) {
+    if (sw.from_week == null) continue; // not linked to a race yet — handled via snapshot fallback
+    const list = switchesByBib.get(sw.bib) ?? [];
+    list.push({ from_week: sw.from_week, new_klasse: normalizeKlasse(sw.new_klasse) });
+    switchesByBib.set(sw.bib, list);
+  }
+  // Sort each rider's switches ascending by from_week
+  for (const [bib, list] of switchesByBib.entries()) {
+    switchesByBib.set(bib, list.sort((a, b) => a.from_week - b.from_week));
+  }
+
+  // Current (final) klasse per bib
+  const currentKlasseByBib = new Map<number, string>(
+    normalized.map((d) => [d.bib, d.klasse])
+  );
+
+  /**
+   * Returns the klasse a rider should be scored in for a given race week,
+   * based on history (if available) or the stored snapshot on the result row.
+   */
+  function effectiveKlasseForWeek(
+    bib: number,
+    week: number,
+    snapshotKlasse: string | null | undefined
+  ): string {
+    const currentKlasse = currentKlasseByBib.get(bib);
+
+    // If we have explicit history with from_week set, use it
+    const switches = switchesByBib.get(bib);
+    if (switches && switches.length > 0) {
+      // Walk backwards: find the latest switch whose from_week <= this week
+      let activeKlasse: string | undefined;
+      for (const sw of switches) {
+        if (sw.from_week <= week) {
+          activeKlasse = sw.new_klasse;
+        }
+      }
+      if (activeKlasse) return activeKlasse;
+      // week is before any switch → rider was in their ORIGINAL klasse
+      // Original = old_klasse of the first switch that applies to this bib
+      const firstSwitch = klasseSwitches
+        .filter((s) => s.bib === bib && s.from_week != null)
+        .sort((a, b) => (a.from_week ?? 0) - (b.from_week ?? 0))[0];
+      if (firstSwitch) return normalizeKlasse(firstSwitch.old_klasse);
+    }
+
+    // Fallback: use the snapshot stored on the race_result row
+    if (snapshotKlasse) return normalizeKlasse(snapshotKlasse);
+
+    // Final fallback: current klasse
+    return currentKlasse ?? "";
+  }
+
   const resultsByWeek = new Map<number, RaceResult[]>();
   for (const r of allResults) {
     if (!resultsByWeek.has(r.week)) resultsByWeek.set(r.week, []);
@@ -43,13 +118,6 @@ export function computeKlassement(
 
   const weeksWithResults = [...resultsByWeek.keys()].sort((a, b) => a - b);
 
-  // Map bib -> current klasse (normalized) for quick lookup
-  const currentKlasseByBib = new Map<number, string>(
-    normalized.map((d) => [d.bib, d.klasse])
-  );
-
-  // Fixed points awarded when a rider races in their OLD klasse after a switch
-
   const pointsMap = new Map<number, Record<string, number>>();
   for (const d of normalized) pointsMap.set(d.bib, {});
 
@@ -57,18 +125,16 @@ export function computeKlassement(
     const raceName = getRaceName(week);
     const weekResults = resultsByWeek.get(week) ?? [];
 
-    // Separate results into:
-    //   - normal: rider competed in their current klasse (or no snapshot stored)
-    //   - switched: rider competed in a different (old) klasse this week
+    // Determine effective klasse per result and flag switched riders
     const normalResults: RaceResult[] = [];
     const switchedBibs = new Set<number>();
 
     for (const r of weekResults) {
       const currentKlasse = currentKlasseByBib.get(r.bib);
-      const raceKlasse = r.klasse ? normalizeKlasse(r.klasse) : currentKlasse;
+      const raceKlasse = effectiveKlasseForWeek(r.bib, week, r.klasse);
 
-      if (currentKlasse && raceKlasse && raceKlasse !== currentKlasse) {
-        // Rider has since switched klasse — this result is in their old klasse
+      if (currentKlasse && raceKlasse !== currentKlasse) {
+        // Rider raced in an old klasse this week → fixed penalty points
         switchedBibs.add(r.bib);
         pointsMap.get(r.bib)![raceName] = klasseSwitchPoints;
       } else {
@@ -98,7 +164,7 @@ export function computeKlassement(
       });
 
       for (const d of klasseDeelnemers) {
-        if (switchedBibs.has(d.bib)) continue; // already assigned 50 pts above
+        if (switchedBibs.has(d.bib)) continue;
         const pts = bibPoints.get(d.bib) ?? maxPoints;
         pointsMap.get(d.bib)![raceName] = pts;
       }
@@ -248,9 +314,6 @@ export function computeTeamScores(
     { riders: { naam: string; punten: number; categorie: Categorie }[] }
   >();
 
-  // Build a set of bibs that have at least one actual race result
-  // (weekPoints are pre-filled with maxPoints for absent weeks, so a rider
-  //  who never raced will have ALL values equal to maxPoints)
   const bibsWithResults = new Set(
     klassement
       .filter((r) => Object.values(r.weekPoints).some((p) => p < maxPoints))
@@ -260,7 +323,7 @@ export function computeTeamScores(
   for (const d of validDeelnemers) {
     const row = klassement.find((r) => r.bib === d.bib);
     if (!row) continue;
-    if (!bibsWithResults.has(d.bib)) continue; // never raced, skip
+    if (!bibsWithResults.has(d.bib)) continue;
 
     const punten = row.totaal ?? maxPoints;
     if (!teamMap.has(d.team)) teamMap.set(d.team, { riders: [] });

@@ -1,271 +1,380 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { UserPlus, Trash2, Upload, Search, Edit2, X, Download } from "lucide-react";
+
+import React, { useEffect, useState } from "react";
+import {
+  Trash2,
+  Search,
+  Edit2,
+  History,
+  ChevronDown,
+  ChevronUp,
+  Upload,
+  Download,
+  RefreshCw,
+  UserPlus,
+} from "lucide-react";
+
 import Toast from "@/components/Toast";
 import { Deelnemer, normalizeKlasse } from "@/lib/utils";
-import * as XLSX from "xlsx"; // Import for exporting
+import * as XLSX from "xlsx";
+
+interface KlasseSwitch {
+  id: number;
+  bib: number;
+  old_klasse: string;
+  new_klasse: string;
+  from_week: number | null;
+  changed_at: string;
+}
 
 export default function DeelnemersPage() {
   const [deelnemers, setDeelnemers] = useState<Deelnemer[]>([]);
+  const [switches, setSwitches] = useState<KlasseSwitch[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  
-  // Form State
-  const [showForm, setShowForm] = useState(false);
+  const [toast, setToast] = useState<any>(null);
+
+  const [expandedBib, setExpandedBib] = useState<number | null>(null);
   const [editingBib, setEditingBib] = useState<number | null>(null);
   const [form, setForm] = useState<Partial<Deelnemer>>({ categorie: "STA" });
-  const [saving, setSaving] = useState(false);
-  
-  const fileRef = useRef<HTMLInputElement>(null);
 
-  const fetchDeelnemers = useCallback(async () => {
+  useEffect(() => {
+    reload();
+  }, []);
+
+  const reload = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/deelnemers");
-      const json = await res.json();
-      setDeelnemers(json ?? []);
-    } catch (err) {
-      console.error("Fetch error", err);
+      const [dRes, sRes] = await Promise.all([
+        fetch("/api/deelnemers"),
+        fetch("/api/klasse-history"),
+      ]);
+
+      setDeelnemers((await dRes.json()) ?? []);
+      setSwitches((await sRes.json()) ?? []);
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  useEffect(() => { fetchDeelnemers(); }, [fetchDeelnemers]);
-
-  const resetForm = () => {
-    setShowForm(false);
-    setEditingBib(null);
-    setForm({ categorie: "STA" });
   };
 
-  const handleEdit = (d: Deelnemer) => {
-    setForm(d);
-    setEditingBib(d.bib);
-    setShowForm(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  const switchesByBib = new Map<number, KlasseSwitch[]>();
+  for (const sw of switches) {
+    const list = switchesByBib.get(sw.bib) ?? [];
+    list.push(sw);
+    switchesByBib.set(sw.bib, list);
+  }
 
-  // --- EXPORT FUNCTION ---
   const handleExport = () => {
-    if (deelnemers.length === 0) {
-      setToast({ message: "Geen deelnemers om te exporteren", type: "error" });
-      return;
-    }
-
-    // Map data to clean headers for Excel
-    const exportData = deelnemers.map(d => ({
-      Startnummer: d.bib,
+    const data = deelnemers.map((d) => ({
+      Nr: d.bib,
       Naam: d.naam,
       Klasse: d.klasse,
-      Categorie: d.categorie,
-      Team: d.team || "-"
+      Cat: d.categorie,
+      Team: d.team ?? "-",
     }));
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Deelnemers");
-    
-    // Generate file and trigger download
-    XLSX.writeFile(workbook, `Deelnemerslijst_${new Date().toISOString().split('T')[0]}.xlsx`);
-    setToast({ message: "✓ Excel bestand gedownload", type: "success" });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Deelnemers");
+    XLSX.writeFile(wb, "deelnemers.xlsx");
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     const fd = new FormData();
     fd.append("file", file);
-    const res = await fetch("/api/deelnemers", { method: "POST", body: fd });
-    const json = await res.json();
-    if (res.ok) {
-      setToast({ message: `✓ ${json.count} deelnemers geladen`, type: "success" });
-      fetchDeelnemers();
-    } else {
-      setToast({ message: json.error, type: "error" });
-    }
-    e.target.value = "";
+
+    await fetch("/api/deelnemers", { method: "POST", body: fd });
+    await reload();
+  };
+
+  const handleSync = async () => {
+    await fetch("/api/sync-deelnemers", { method: "POST" });
+    setToast({ message: "✓ Gesynchroniseerd", type: "success" });
+    await reload();
   };
 
   const handleSave = async () => {
     if (!form.bib || !form.naam || !form.klasse) {
-      setToast({ message: "Vul startnummer, naam en klasse in", type: "error" });
+      setToast({ message: "Vul alle velden in", type: "error" });
       return;
     }
-    setSaving(true);
-    const payload = { ...form, klasse: normalizeKlasse(form.klasse!) };
-    
-    const res = await fetch("/api/deelnemers", { 
-      method: "POST", 
-      headers: { "Content-Type": "application/json" }, 
-      body: JSON.stringify(payload) 
+
+    const payload = {
+      ...form,
+      klasse: normalizeKlasse(form.klasse!),
+    };
+
+    await fetch("/api/deelnemers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
 
-    if (res.ok) {
-      setToast({ 
-        message: editingBib ? "✓ Deelnemer bijgewerkt" : "✓ Deelnemer opgeslagen", 
-        type: "success" 
-      });
-      resetForm();
-      fetchDeelnemers();
-    } else {
-      const json = await res.json();
-      setToast({ message: json.error, type: "error" });
-    }
-    setSaving(false);
+    setEditingBib(null);
+    await reload();
   };
 
   const handleDelete = async (bib: number) => {
-    if (!confirm(`Verwijder deelnemer ${bib}?`)) return;
-    const res = await fetch("/api/deelnemers", { 
-      method: "DELETE", 
-      headers: { "Content-Type": "application/json" }, 
-      body: JSON.stringify({ bib }) 
+    if (!confirm("Verwijderen?")) return;
+
+    await fetch("/api/deelnemers", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bib }),
     });
-    if (res.ok) {
-      setToast({ message: "Deelnemer verwijderd", type: "success" });
-      fetchDeelnemers();
-    }
+
+    await reload();
   };
 
-  const filtered = deelnemers.filter((d) =>
-    search === "" ||
-    d.naam.toLowerCase().includes(search.toLowerCase()) ||
-    String(d.bib).includes(search) ||
-    d.klasse.toLowerCase().includes(search.toLowerCase()) || d.team?.toLowerCase().includes(search.toLowerCase())
+  const filtered = deelnemers.filter(
+    (d) =>
+      search === "" ||
+      d.naam.toLowerCase().includes(search.toLowerCase()) ||
+      String(d.bib).includes(search) ||
+      d.klasse.toLowerCase().includes(search.toLowerCase()) ||
+      d.team?.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
-        <div>
-          <h1 style={{ fontSize: 32, margin: 0 }}>Deelnemers<span style={{ color: "var(--accent)" }}> {deelnemers.length}</span></h1>
-          <div style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 4 }}>Beheer de deelnemerslijst</div>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn-secondary" onClick={handleExport} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Download size={14} /> Export Excel
+      <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+        <h1 style={{ margin: 0 }}>
+          Deelnemers <span style={{ color: "var(--accent)" }}>{deelnemers.length}</span>
+        </h1>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn-secondary" onClick={handleExport}>
+            <Download size={14} /> Export
           </button>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={handleFileUpload} />
-          <button className="btn-secondary" onClick={() => fileRef.current?.click()} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Upload size={14} /> Excel importeren
+
+          <label className="btn-secondary" style={{ cursor: "pointer" }}>
+            <Upload size={14} /> Import
+            <input type="file" accept=".xlsx,.xls" hidden onChange={handleFileUpload} />
+          </label>
+
+          <button className="btn-secondary" onClick={handleSync}>
+            <RefreshCw size={14} /> Sync
           </button>
-          <button className="btn-primary" onClick={() => { if(showForm && editingBib) resetForm(); setShowForm(!showForm); }} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+
+          <button
+            className="btn-primary"
+            onClick={() => {
+              setExpandedBib(null);
+              setEditingBib(null);
+              setForm({ categorie: "STA" });
+            }}
+          >
             <UserPlus size={14} /> Toevoegen
           </button>
         </div>
       </div>
 
-      {/* Add / Edit form */}
-      {showForm && (
-        <div className="card" style={{ padding: 20, marginBottom: 20, borderLeft: editingBib ? "4px solid var(--accent)" : "none" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-             <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 800, fontSize: 16 }}>
-                {editingBib ? `Deelnemer ${editingBib} bewerken` : "Nieuwe deelnemer"}
-             </div>
-             <button onClick={resetForm} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><X size={18}/></button>
-          </div>
-          
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
-            {[
-              { key: "bib", label: "Startnummer", type: "number", placeholder: "101", disabled: !!editingBib },
-              { key: "naam", label: "Naam", type: "text", placeholder: "Jan Janssen" },
-              { key: "klasse", label: "Klasse", type: "text", placeholder: "A40+" },
-              { key: "team", label: "Team", type: "text", placeholder: "Team naam" },
-            ].map(({ key, label, type, placeholder, disabled }) => (
-              <div key={key}>
-                <label style={{ display: "block", fontSize: 11, fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 6 }}>{label}</label>
-                <input 
-                  className="input" 
-                  type={type} 
-                  placeholder={placeholder} 
-                  style={{ width: "100%", opacity: disabled ? 0.6 : 1 }}
-                  disabled={disabled}
-                  value={String(form[key as keyof Deelnemer] ?? "")}
-                  onChange={(e) => setForm((f) => ({ ...f, [key]: type === "number" ? parseInt(e.target.value) || "" : e.target.value }))}
-                />
-              </div>
-            ))}
-            <div>
-              <label style={{ display: "block", fontSize: 11, fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 6 }}>Categorie</label>
-              <select className="input" style={{ width: "100%" }} value={form.categorie ?? "STA"} onChange={(e) => setForm((f) => ({ ...f, categorie: e.target.value as Deelnemer["categorie"] }))}>
-                <option value="STA">STA</option>
-                <option value="SEN">SEN</option>
-                <option value="DAM">DAM</option>
-              </select>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? "Opslaan..." : editingBib ? "Bijwerken" : "Opslaan"}
-            </button>
-            <button className="btn-secondary" onClick={resetForm}>Annuleren</button>
-          </div>
-        </div>
-      )}
-
-      {/* Search */}
       <div style={{ position: "relative", marginBottom: 16 }}>
-        <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
-        <input className="input" placeholder="Zoek op naam, nummer, klasse of team..." style={{ width: "100%", paddingLeft: 36 }} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Search
+          size={14}
+          style={{
+            position: "absolute",
+            left: 10,
+            top: "50%",
+            transform: "translateY(-50%)",
+            color: "var(--text-muted)",
+          }}
+        />
+        <input
+          className="input"
+          placeholder="Zoeken..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ paddingLeft: 30 }}
+        />
       </div>
 
-      {/* Table */}
-      <div className="card" style={{ overflowX: "auto" }}>
+      <div className="card">
         {loading ? (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--text-muted)", fontFamily: "'Barlow Condensed', sans-serif" }}>Laden...</div>
+          <div style={{ padding: 40 }}>Laden...</div>
         ) : (
           <table className="data-table">
             <thead>
               <tr>
-                <th>Nr.</th>
+                <th>Nr</th>
                 <th>Naam</th>
                 <th>Klasse</th>
-                <th>Cat.</th>
+                <th>Cat</th>
                 <th>Team</th>
-                <th style={{ textAlign: 'right' }}>Acties</th>
+                <th style={{ textAlign: "right" }}>Acties</th>
               </tr>
             </thead>
+
             <tbody>
-              {filtered.map((d) => (
-                <tr key={d.bib} className={d.categorie === "DAM" ? "row-dam" : ""}>
-                  <td style={{ fontWeight: 700, color: "var(--accent)" }}>{d.bib}</td>
-                  <td style={{ fontWeight: 600 }}>{d.naam}</td>
-                  <td style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: 13 }}>{d.klasse}</td>
-                  <td><span className={`badge badge-${d.categorie.toLowerCase()}`}>{d.categorie}</span></td>
-                  <td style={{ color: "var(--text-muted)" }}>{d.team ?? "—"}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <div style={{ display: "flex", gap: 4, justifyContent: 'flex-end' }}>
-                        <button 
-                            onClick={() => handleEdit(d)}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 6, borderRadius: 4 }}
+              {filtered.map((d) => {
+                const isOpen = expandedBib === d.bib;
+                const isEdit = editingBib === d.bib;
+                const hist = switchesByBib.get(d.bib) ?? [];
+
+                return (
+                  <React.Fragment key={d.bib}>
+                    <tr>
+                      <td style={{ color: "var(--accent)", fontWeight: 700 }}>{d.bib}</td>
+                      <td>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {d.naam}
+                         <button
+  onClick={() => setExpandedBib(isOpen ? null : d.bib)}
+  style={{
+    background: "var(--surface-2)",
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    fontSize: 11,
+    padding: "1px 6px",
+    display: "flex",
+    gap: 4,
+    alignItems: "center",
+    cursor: "pointer",
+    color: "var(--accent)",
+  }}
+>
+  <History size={10} />
+  {hist.length}
+  {isOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+</button>
+                        </div>
+                      </td>
+                      <td>{d.klasse}</td>
+                      <td>{d.categorie}</td>
+                      <td>{d.team ?? "-"}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <button
+                          onClick={() => {
+                            setEditingBib(d.bib);
+                            setExpandedBib(d.bib);
+                            setForm(d);
+                          }}
+                          style={{ color: "#facc15", background: "none", border: "none", marginRight: 6 }}
                         >
-                            <Edit2 size={14} />
+                          <Edit2 size={16} />
                         </button>
-                        <button 
-                            onClick={() => handleDelete(d.bib)} 
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 6, borderRadius: 4, transition: "color 0.15s" }}
-                            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--red)")}
-                            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+
+                        <button
+                          onClick={() => handleDelete(d.bib)}
+                          style={{ color: "#ef4444", background: "none", border: "none" }}
                         >
-                            <Trash2 size={14} />
+                          <Trash2 size={16} />
                         </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>
-                  {search ? "Geen resultaten gevonden" : "Nog geen deelnemers. Importeer een Excel-bestand."}
-                </td></tr>
-              )}
+                      </td>
+                    </tr>
+
+                    {isOpen && (
+                      <tr>
+                        <td colSpan={6}>
+                          <div style={{ padding: 12, background: "var(--surface-2)" }}>
+
+                            {/* ✅ EDIT FORM (FIXED SPACING) */}
+                            {isEdit && (
+                              <div
+  className="card"
+  style={{
+    padding: 12,
+    display: "flex",
+    gap: 10,
+    width: "100%",
+    alignItems: "center",
+    flexWrap: "wrap",
+  }}
+>
+                               <input
+  className="input"
+  style={{ flex: 2, minWidth: 160 }}
+  value={form.naam ?? ""}
+  onChange={(e) =>
+    setForm((f) => ({ ...f, naam: e.target.value }))
+  }
+/>
+
+                               <select
+  className="input"
+  style={{ flex: 1, minWidth: 120 }}
+  value={form.klasse ?? ""}
+  onChange={(e) =>
+    setForm((f) => ({
+      ...f,
+      klasse: e.target.value as Deelnemer["klasse"],
+    }))
+  }
+>
+                                  <option value="">Klasse</option>
+                                  <option value="A">A</option>
+                                  <option value="A40+">A40+</option>
+                                  <option value="B">B</option>
+                                  <option value="B50+">B50+</option>
+                                  <option value="C">C</option>
+                                  <option value="D">D</option>
+                                  <option value="E">E</option>
+                                </select>
+
+                                <select
+  className="input"
+  style={{ flex: 1, minWidth: 120 }}
+  value={form.categorie ?? "STA"}
+  onChange={(e) =>
+    setForm((f) => ({
+      ...f,
+      categorie: e.target.value as Deelnemer["categorie"],
+    }))
+  }
+>
+                                  <option value="STA">STA</option>
+                                  <option value="SEN">SEN</option>
+                                  <option value="DAM">DAM</option>
+                                </select>
+
+                                <input
+  className="input"
+  style={{ flex: 1, minWidth: 120 }}
+  value={form.team ?? ""}
+  onChange={(e) =>
+    setForm((f) => ({ ...f, team: e.target.value }))
+  }
+/>
+
+                                <div style={{ display: "flex", alignItems: "center" }}>
+  <button className="btn-primary" onClick={handleSave}>
+    Opslaan
+  </button>
+</div>
+                              </div>
+                            )}
+
+                            {/* HISTORY */}
+                            {hist.length > 0 ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                {hist.map((sw) => (
+                                  <div key={sw.id} style={{ fontSize: 13 }}>
+                                    {sw.old_klasse} → {sw.new_klasse}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                                Geen klassewissels
+                              </div>
+                            )}
+
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}
       </div>
 
-      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+      {toast && <Toast {...toast} onClose={() => setToast(null)} />}
     </div>
   );
 }

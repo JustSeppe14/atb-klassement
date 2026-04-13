@@ -79,7 +79,7 @@ export function parseDeelnemersFile(buffer: ArrayBuffer) {
 
       return { bib, naam, klasse, categorie, team: team || null } as Deelnemer;
     })
-    .filter(Boolean);
+    .filter((d): d is Deelnemer => d !== null);
 }
 
 // --- EXPORT KLASSEMENT TO EXCEL ---

@@ -56,6 +56,19 @@ create table if not exists races (
   sort_order  integer default 0
 );
 
+create table if not exists klasse_history (
+  id          bigserial primary key,
+  bib         integer not null,
+  old_klasse  text not null,
+  new_klasse  text not null,
+  -- week number of the FIRST race in the new klasse (sort_order)
+  -- NULL means "not yet assigned to a race" — still useful as an audit log
+  from_week   integer,
+  changed_at  timestamptz default now()
+);
+
+
+create index if not exists klasse_history_bib_idx on klasse_history (bib);
 -- ============================================================
 -- 5. ROW LEVEL SECURITY
 -- ============================================================
@@ -63,6 +76,7 @@ alter table deelnemers enable row level security;
 alter table race_results enable row level security;
 alter table config enable row level security;
 alter table races enable row level security;
+alter table klasse_history enable row level security;
 
 -- ============================================================
 -- 6. POLICIES (read access for everyone)
@@ -73,9 +87,11 @@ drop policy if exists "Allow read deelnemers" on deelnemers;
 drop policy if exists "Allow read race_results" on race_results;
 drop policy if exists "Allow read config" on config;
 drop policy if exists "Allow read races" on races;
+drop policy if exists "Allow read klasse_history" on klasse_history;
 
 -- Create policies
 create policy "Allow read deelnemers"     on deelnemers    for select using (true);
 create policy "Allow read race_results"   on race_results for select using (true);
 create policy "Allow read config"         on config       for select using (true);
 create policy "Allow read races"          on races        for select using (true);
+create policy "Allow read klasse_history" on klasse_history for select using (true);

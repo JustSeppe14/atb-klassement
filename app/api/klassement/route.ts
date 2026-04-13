@@ -1,8 +1,8 @@
-// app/api/klassement/route.ts  (JSON response for the frontend)
+// app/api/klassement/route.ts
 
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { computeKlassement, computeRegelmatigheid, computeTeamScores } from "@/lib/klassement";
+import { computeKlassement, computeRegelmatigheid, computeTeamScores, KlasseSwitch } from "@/lib/klassement";
 import { DEFAULT_CONFIG, SeasonConfig } from "@/lib/utils";
 import { parseScoringConfig } from "@/lib/scoring-config";
 
@@ -15,11 +15,13 @@ export async function GET() {
       { data: results },
       { data: configData },
       { data: racesData },
+      { data: switchData },
     ] = await Promise.all([
       supabase.from("deelnemers").select("*"),
       supabase.from("race_results").select("*"),
       supabase.from("config").select("*").eq("id", 1).single(),
       supabase.from("races").select("*").order("sort_order").order("id"),
+      supabase.from("klasse_history").select("*").order("changed_at"),
     ]);
 
     const config: SeasonConfig = {
@@ -38,8 +40,14 @@ export async function GET() {
 
     const d = deelnemers ?? [];
     const r = results ?? [];
+    const switches: KlasseSwitch[] = (switchData ?? []).map((s) => ({
+      bib:        s.bib,
+      old_klasse: s.old_klasse,
+      new_klasse: s.new_klasse,
+      from_week:  s.from_week ?? null,
+    }));
 
-    const klassement     = computeKlassement(d, r, config, races, scoringCfg);
+    const klassement     = computeKlassement(d, r, config, races, scoringCfg, switches);
     const regelmatigheid = computeRegelmatigheid(d, r, config.currentWeek, scoringCfg);
     const teamSTA        = computeTeamScores(d, klassement, "STA", scoringCfg);
     const teamMixed      = computeTeamScores(d, klassement, "MIXED", scoringCfg);
