@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
-import { UserPlus, Trash2, Upload, Search, Edit2, X, Download, RefreshCw, History, ChevronDown, ChevronUp } from "lucide-react";
+import { UserPlus, Trash2, Upload, Search, Edit2, X, Download, RefreshCw, History, ChevronDown, ChevronUp, Check } from "lucide-react";
 import Toast from "@/components/Toast";
 import { Deelnemer, normalizeKlasse } from "@/lib/utils";
 import * as XLSX from "xlsx";
@@ -22,6 +22,10 @@ export default function DeelnemersPage() {
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [expandedBibs, setExpandedBibs] = useState<Set<number>>(new Set());
+
+  // Inline Edit State
+  const [inlineEditingBib, setInlineEditingBib] = useState<number | null>(null);
+  const [inlineForm, setInlineForm] = useState<Partial<Deelnemer>>({});
 
   const [showForm, setShowForm] = useState(false);
   const [editingBib, setEditingBib] = useState<number | null>(null);
@@ -60,11 +64,35 @@ export default function DeelnemersPage() {
 
   const resetForm = () => { setShowForm(false); setEditingBib(null); setForm({ categorie: "STA" }); };
 
-  const handleEdit = (d: Deelnemer) => {
-    setForm(d);
-    setEditingBib(d.bib);
-    setShowForm(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  // Triggered by the edit icon in the row
+  const startInlineEdit = (d: Deelnemer) => {
+    setInlineEditingBib(d.bib);
+    setInlineForm(d);
+  };
+
+  const cancelInlineEdit = () => {
+    setInlineEditingBib(null);
+    setInlineForm({});
+  };
+
+  const handleInlineSave = async () => {
+    if (!inlineForm.naam || !inlineForm.klasse) {
+      setToast({ message: "Vul naam en klasse in", type: "error" }); return;
+    }
+    setSaving(true);
+    const payload = { ...inlineForm, klasse: normalizeKlasse(inlineForm.klasse!) };
+    const res = await fetch("/api/deelnemers", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      setToast({ message: "✓ Deelnemer bijgewerkt", type: "success" });
+      setInlineEditingBib(null);
+      fetchAll();
+    } else {
+      const json = await res.json();
+      setToast({ message: json.error, type: "error" });
+    }
+    setSaving(false);
   };
 
   const handleExport = () => {
@@ -167,6 +195,10 @@ export default function DeelnemersPage() {
     color: "var(--text-muted)", marginBottom: 6,
   };
 
+  const inlineInputStyle: React.CSSProperties = {
+    padding: "4px 8px", fontSize: 13, width: "100%",
+  };
+
   return (
     <div>
       {/* Header */}
@@ -202,7 +234,7 @@ export default function DeelnemersPage() {
         </div>
       </div>
 
-      {/* Add / Edit form */}
+      {/* Add / Edit form (Keeping this for Adding new participants) */}
       {showForm && (
         <div className="card" style={{ padding: 20, marginBottom: 20, borderLeft: editingBib ? "4px solid var(--accent)" : "none" }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
@@ -250,11 +282,6 @@ export default function DeelnemersPage() {
               </select>
             </div>
           </div>
-          {editingBib && (
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12, padding: "8px 12px", background: "var(--surface-2)", borderRadius: 6 }}>
-              💡 Klassewijziging wordt automatisch verwerkt: alle vorige uitslagen krijgen 50 punten, nieuwe uitslagen tellen in de nieuwe klasse.
-            </div>
-          )}
           <div style={{ display: "flex", gap: 8 }}>
             <button className="btn-primary" onClick={handleSave} disabled={saving}>{saving ? "Opslaan..." : editingBib ? "Bijwerken" : "Opslaan"}</button>
             <button className="btn-secondary" onClick={resetForm}>Annuleren</button>
@@ -283,116 +310,142 @@ export default function DeelnemersPage() {
               {filtered.map((d) => {
                 const bibSwitches = (switchesByBib.get(d.bib) ?? []).sort((a, b) => a.from_week - b.from_week);
                 const isExpanded = expandedBibs.has(d.bib);
+                const isEditing = inlineEditingBib === d.bib;
 
                 return (
                   <Fragment key={d.bib}>
-                    {/* Main row */}
-                    <tr className={d.categorie === "DAM" ? "row-dam" : ""}>
+                    <tr className={d.categorie === "DAM" ? "row-dam" : ""} style={{ background: isEditing ? "var(--surface-2)" : "inherit" }}>
+                      {/* BIB COLUMN */}
                       <td style={{ fontWeight: 700, color: "var(--accent)" }}>{d.bib}</td>
+                      
+                      {/* NAME COLUMN */}
                       <td style={{ fontWeight: 600 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          {d.naam}
-                          {/* History badge — always visible */}
-                          <button
-                            onClick={() => toggleExpand(d.bib)}
-                            title={bibSwitches.length > 0 ? "Klassewissels bekijken" : "Geen klassewissels"}
-                            style={{
-                              display: "inline-flex", alignItems: "center", gap: 4,
-                              background: bibSwitches.length > 0 ? "rgba(232,162,23,0.12)" : "var(--surface-2)",
-                              border: bibSwitches.length > 0 ? "1px solid rgba(232,162,23,0.3)" : "1px solid var(--border)",
-                              borderRadius: 10, padding: "1px 7px", cursor: "pointer",
-                              fontSize: 11, fontWeight: 700,
-                              color: bibSwitches.length > 0 ? "var(--accent)" : "var(--text-muted)",
-                            }}
-                          >
-                            <History size={10} />
-                            {bibSwitches.length}
-                            {isExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                          </button>
-                        </div>
+                        {isEditing ? (
+                          <input 
+                            className="input" 
+                            style={inlineInputStyle} 
+                            value={inlineForm.naam || ""} 
+                            onChange={(e) => setInlineForm(f => ({...f, naam: e.target.value}))}
+                          />
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            {d.naam}
+                            <button
+                              onClick={() => toggleExpand(d.bib)}
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 4,
+                                background: bibSwitches.length > 0 ? "rgba(232,162,23,0.12)" : "var(--surface-2)",
+                                border: bibSwitches.length > 0 ? "1px solid rgba(232,162,23,0.3)" : "1px solid var(--border)",
+                                borderRadius: 10, padding: "1px 7px", cursor: "pointer",
+                                fontSize: 11, fontWeight: 700,
+                                color: bibSwitches.length > 0 ? "var(--accent)" : "var(--text-muted)",
+                              }}
+                            >
+                              <History size={10} />
+                              {bibSwitches.length}
+                              {isExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                            </button>
+                          </div>
+                        )}
                       </td>
-                      <td style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: 13 }}>{d.klasse}</td>
-                      <td><span className={`badge badge-${d.categorie.toLowerCase()}`}>{d.categorie}</span></td>
-                      <td style={{ color: "var(--text-muted)" }}>{d.team ?? "—"}</td>
+
+                      {/* KLASSE COLUMN */}
+                      <td>
+                        {isEditing ? (
+                          <select className="input" style={inlineInputStyle} value={inlineForm.klasse || ""} onChange={(e) => setInlineForm(f => ({...f, klasse: e.target.value}))}>
+                            <option value="A">A</option>
+                            <option value="A40+">A40+</option>
+                            <option value="B">B</option>
+                            <option value="B50+">B50+</option>
+                            <option value="C">C</option>
+                            <option value="D">D</option>
+                            <option value="E">E</option>
+                          </select>
+                        ) : (
+                          <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: 13 }}>{d.klasse}</span>
+                        )}
+                      </td>
+
+                      {/* CATEGORIE COLUMN */}
+                      <td>
+                        {isEditing ? (
+                          <select className="input" style={inlineInputStyle} value={inlineForm.categorie || ""} onChange={(e) => setInlineForm(f => ({...f, categorie: e.target.value as Deelnemer["categorie"]}))}>
+                            <option value="STA">STA</option>
+                            <option value="SEN">SEN</option>
+                            <option value="DAM">DAM</option>
+                          </select>
+                        ) : (
+                          <span className={`badge badge-${d.categorie.toLowerCase()}`}>{d.categorie}</span>
+                        )}
+                      </td>
+
+                      {/* TEAM COLUMN */}
+                      <td style={{ color: "var(--text-muted)" }}>
+                        {isEditing ? (
+                          <input 
+                            className="input" 
+                            style={inlineInputStyle} 
+                            value={inlineForm.team || ""} 
+                            onChange={(e) => setInlineForm(f => ({...f, team: e.target.value}))}
+                          />
+                        ) : (
+                          d.team ?? "—"
+                        )}
+                      </td>
+
+                      {/* ACTIONS COLUMN */}
                       <td style={{ textAlign: "right" }}>
                         <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-                          <button onClick={() => handleEdit(d)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 6, borderRadius: 4 }}>
-                            <Edit2 size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(d.bib)}
-                            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 6, borderRadius: 4, transition: "color 0.15s" }}
-                            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--red)")}
-                            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-                          >
-                            <Trash2 size={14} />
-                          </button>
+                          {isEditing ? (
+                            <>
+                              <button onClick={handleInlineSave} disabled={saving} style={{ background: "var(--accent)", border: "none", cursor: "pointer", color: "#fff", padding: 6, borderRadius: 4 }}>
+                                <Check size={14} />
+                              </button>
+                              <button onClick={cancelInlineEdit} style={{ background: "none", border: "1px solid var(--border)", cursor: "pointer", color: "var(--text-muted)", padding: 6, borderRadius: 4 }}>
+                                <X size={14} />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => startInlineEdit(d)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 6, borderRadius: 4 }}>
+                                <Edit2 size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(d.bib)}
+                                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 6, borderRadius: 4 }}
+                                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--red)")}
+                                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
 
-                    {/* Klasse history panel */}
+                    {/* Expandable History (Same as before) */}
                     {isExpanded && (
                       <tr>
                         <td colSpan={6} style={{ padding: 0, background: "var(--surface-2)" }}>
                           <div style={{ padding: "12px 20px 14px 48px" }}>
-                            <div style={{
-                              fontSize: 11, fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700,
-                              letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)",
-                              marginBottom: 8, display: "flex", alignItems: "center", gap: 6,
-                            }}>
+                            <div style={{ fontSize: 11, fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
                               <History size={11} /> Klassewissels — uitslagen vóór de wissel tellen als 50 punten
                             </div>
-
                             {bibSwitches.length === 0 ? (
-                              <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", padding: "6px 0" }}>
-                                Geen klassewissels geregistreerd voor deze deelnemer.
-                              </div>
+                              <div style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", padding: "6px 0" }}>Geen klassewissels geregistreerd.</div>
                             ) : (
                               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 {bibSwitches.map((sw) => (
-                                  <div key={sw.id} style={{
-                                    display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
-                                    background: "var(--surface)", border: "1px solid var(--border)",
-                                    borderRadius: 8, padding: "7px 12px",
-                                  }}>
-                                    {/* Old → New klasse */}
+                                  <div key={sw.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 12px" }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 160 }}>
-                                      <span style={{
-                                        fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 800, fontSize: 13,
-                                        color: "var(--text-muted)", background: "var(--surface-2)", padding: "2px 8px", borderRadius: 4,
-                                      }}>
-                                        {sw.old_klasse}
-                                      </span>
+                                      <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 800, fontSize: 13, color: "var(--text-muted)", background: "var(--surface-2)", padding: "2px 8px", borderRadius: 4 }}>{sw.old_klasse}</span>
                                       <span style={{ color: "var(--text-muted)", fontSize: 12 }}>→</span>
-                                      <span style={{
-                                        fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 800, fontSize: 13,
-                                        color: "var(--accent)", background: "var(--surface-2)", padding: "2px 8px", borderRadius: 4,
-                                      }}>
-                                        {sw.new_klasse}
-                                      </span>
+                                      <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 800, fontSize: 13, color: "var(--accent)", background: "var(--surface-2)", padding: "2px 8px", borderRadius: 4 }}>{sw.new_klasse}</span>
                                     </div>
-
-                                    {/* From race */}
-                                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                                      Nieuwe klasse vanaf: <strong style={{ color: "var(--text)" }}>{raceName(sw.from_week)}</strong>
-                                    </div>
-
-                                    {/* Detected on date */}
-                                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>
-                                      Gedetecteerd op {new Date(sw.changed_at).toLocaleDateString("nl-BE", { day: "numeric", month: "short", year: "numeric" })}
-                                    </div>
-
-                                    {/* Undo */}
-                                    <button
-                                      onClick={() => handleDeleteSwitch(sw.id)}
-                                      title="Klassewisseling ongedaan maken"
-                                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, borderRadius: 4, flexShrink: 0 }}
-                                      onMouseEnter={(e) => (e.currentTarget.style.color = "var(--red)")}
-                                      onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
+                                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Nieuwe klasse vanaf: <strong style={{ color: "var(--text)" }}>{raceName(sw.from_week)}</strong></div>
+                                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>Gedetecteerd op {new Date(sw.changed_at).toLocaleDateString("nl-BE")}</div>
+                                    <button onClick={() => handleDeleteSwitch(sw.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4, borderRadius: 4 }}><Trash2 size={13} /></button>
                                   </div>
                                 ))}
                               </div>
@@ -404,16 +457,10 @@ export default function DeelnemersPage() {
                   </Fragment>
                 );
               })}
-              {filtered.length === 0 && (
-                <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-muted)", padding: 40 }}>
-                  {search ? "Geen resultaten gevonden" : "Nog geen deelnemers. Importeer een Excel-bestand."}
-                </td></tr>
-              )}
             </tbody>
           </table>
         )}
       </div>
-
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
