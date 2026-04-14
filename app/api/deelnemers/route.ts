@@ -3,20 +3,21 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { parseDeelnemersFile } from "@/lib/excel";
 import { normalizeKlasse } from "@/lib/utils";
 
+async function getCurrentWeek(supabase: ReturnType<typeof getSupabaseAdmin>) {
+  const { data: latestRace } = await supabase
+    .from("races")
+    .select("sort_order")
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .single();
+
+  return (latestRace?.sort_order ?? 0) + 1;
+}
+
 export async function GET() {
   const supabase = getSupabaseAdmin();
-
-  const { data, error } = await supabase
-    .from("deelnemers")
-    .select("*")
-    .order("bib");
-
-  if (error) {
-    console.error("GET deelnemers error:", error);
-    return NextResponse.json([]);
-  }
-
-  return NextResponse.json(Array.isArray(data) ? data : []);
+  const { data } = await supabase.from("deelnemers").select("*").order("bib");
+  return NextResponse.json(data ?? []);
 }
 
 export async function POST(req: NextRequest) {
@@ -24,129 +25,94 @@ export async function POST(req: NextRequest) {
     const contentType = req.headers.get("content-type") ?? "";
     const supabase = getSupabaseAdmin();
 
-    if (contentType.includes("multipart/form-data")) {
-      // ── File upload (bulk import) ──────────────────────────────────────────
-      const formData = await req.formData();
-      const file = formData.get("file") as File | null;
+    const currentWeek = await getCurrentWeek(supabase);
 
-      if (!file) {
-        return NextResponse.json({ error: "No file uploaded" }, { status: 400 });
-      }
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await req.formData();
+      const file = formData.get("file") as File;
 
       const buffer = await file.arrayBuffer();
       const deelnemers = parseDeelnemersFile(buffer);
 
-      if (!deelnemers || deelnemers.length === 0) {
-        return NextResponse.json(
-          { error: "No valid participants found in file" },
-          { status: 400 }
-        );
-      }
-
-      // Detect klasse changes vs what's currently in the DB
       const bibs = deelnemers.map((d: { bib: number }) => d.bib);
+
       const { data: existing } = await supabase
         .from("deelnemers")
         .select("bib, klasse")
         .in("bib", bibs);
 
       const existingMap = new Map(
-        (existing ?? []).map((r: { bib: number; klasse: string }) => [r.bib, r.klasse])
+        (existing ?? []).map((r: any) => [r.bib, r.klasse])
       );
 
       const historyRows = deelnemers
-        .filter((d: { bib: number; klasse: string }) => {
+        .filter((d: any) => {
           const oldKlasse = existingMap.get(d.bib);
           return (
-            oldKlasse !== undefined &&
+            oldKlasse &&
             normalizeKlasse(oldKlasse) !== normalizeKlasse(d.klasse)
           );
         })
-        .map((d: { bib: number; klasse: string }) => ({
+        .map((d: any) => ({
           bib: d.bib,
-          old_klasse: normalizeKlasse(existingMap.get(d.bib) as string),
+          old_klasse: normalizeKlasse(existingMap.get(d.bib)),
           new_klasse: normalizeKlasse(d.klasse),
+          from_week: currentWeek,
         }));
 
-      if (historyRows.length > 0) {
+      if (historyRows.length) {
         await supabase.from("klasse_history").insert(historyRows);
       }
 
-      const { error } = await supabase
-        .from("deelnemers")
-        .upsert(deelnemers, { onConflict: "bib", ignoreDuplicates: false });
-
-      if (error) {
-        console.error("Supabase Upsert Error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
+      await supabase.from("deelnemers").upsert(deelnemers, {
+        onConflict: "bib",
+      });
 
       return NextResponse.json({ success: true, count: deelnemers.length });
-    } else {
-      // ── Single JSON upsert (add / edit one rider) ─────────────────────────
-      const body = await req.json();
+    }
 
-      if (!body || (Array.isArray(body) && body.length === 0)) {
-        return NextResponse.json({ error: "Empty request body" }, { status: 400 });
-      }
+    // single rider
+    const body = await req.json();
 
-      // Detect klasse change for single-rider edits
-      if (!Array.isArray(body) && body.bib) {
-        const { data: existing } = await supabase
-          .from("deelnemers")
-          .select("klasse")
-          .eq("bib", body.bib)
-          .maybeSingle();
+    if (body.bib) {
+      const { data: existing } = await supabase
+        .from("deelnemers")
+        .select("klasse")
+        .eq("bib", body.bib)
+        .maybeSingle();
 
-        if (existing) {
-          const oldKlasse = normalizeKlasse(existing.klasse);
-          const newKlasse = normalizeKlasse(body.klasse ?? "");
+      if (existing) {
+        const oldKlasse = normalizeKlasse(existing.klasse);
+        const newKlasse = normalizeKlasse(body.klasse);
 
-          if (oldKlasse && newKlasse && oldKlasse !== newKlasse) {
-            await supabase.from("klasse_history").insert({
-              bib: body.bib,
-              old_klasse: oldKlasse,
-              new_klasse: newKlasse,
-            });
-          }
+        if (oldKlasse !== newKlasse) {
+          await supabase.from("klasse_history").insert({
+            bib: body.bib,
+            old_klasse: oldKlasse,
+            new_klasse: newKlasse,
+            from_week: currentWeek,
+          });
         }
       }
-
-      const { error } = await supabase
-        .from("deelnemers")
-        .upsert(body, { onConflict: "bib", ignoreDuplicates: false })
-        .select();
-
-      if (error) {
-        console.error("Supabase Upsert Error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
-      }
-
-      return NextResponse.json({
-        success: true,
-        count: Array.isArray(body) ? body.length : 1,
-      });
     }
+
+    await supabase.from("deelnemers").upsert(body, {
+      onConflict: "bib",
+    });
+
+    return NextResponse.json({ success: true });
   } catch (err: unknown) {
-    console.error("Server Error:", err);
-    const message = err instanceof Error ? err.message : "Internal Server Error";
+    const message = err instanceof Error ? err.message : "Error";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
 export async function DELETE(req: NextRequest) {
-  try {
-    const { bib } = await req.json();
-    const supabase = getSupabaseAdmin();
+  const { bib } = await req.json();
+  const supabase = getSupabaseAdmin();
 
-    // Clean up history when rider is removed
-    await supabase.from("klasse_history").delete().eq("bib", bib);
+  await supabase.from("klasse_history").delete().eq("bib", bib);
+  await supabase.from("deelnemers").delete().eq("bib", bib);
 
-    const { error } = await supabase.from("deelnemers").delete().eq("bib", bib);
-    if (error) throw error;
-    return NextResponse.json({ success: true });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+  return NextResponse.json({ success: true });
 }

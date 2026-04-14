@@ -10,7 +10,7 @@ export async function POST() {
 
     if (!sheetId || !gid) {
       return NextResponse.json(
-        { error: "GOOGLE_SHEETS_ID en GOOGLE_SHEETS_GID zijn niet ingesteld in de omgevingsvariabelen." },
+        { error: "GOOGLE_SHEETS_ID en GOOGLE_SHEETS_GID zijn niet ingesteld." },
         { status: 500 }
       );
     }
@@ -20,7 +20,7 @@ export async function POST() {
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: `Google Sheets ophalen mislukt: ${response.status} ${response.statusText}` },
+        { error: `Google Sheets ophalen mislukt: ${response.status}` },
         { status: 502 }
       );
     }
@@ -30,25 +30,35 @@ export async function POST() {
 
     if (!deelnemers || deelnemers.length === 0) {
       return NextResponse.json(
-        { error: "Geen geldige deelnemers gevonden in het Google Sheet. Controleer de kolomnamen (nr, naam, klasse)." },
+        { error: "Geen geldige deelnemers gevonden in sheet." },
         { status: 400 }
       );
     }
 
     const supabase = getSupabaseAdmin();
 
-    // Fetch current klasse for all bibs to detect switches
     const bibs = deelnemers.map((d: { bib: number }) => d.bib);
-    const { data: existing } = await supabase
-      .from("deelnemers")
-      .select("bib, klasse")
-      .in("bib", bibs);
+
+    const [{ data: existing }, { data: latestRace }] = await Promise.all([
+      supabase.from("deelnemers").select("bib, klasse").in("bib", bibs),
+      supabase
+        .from("races")
+        .select("sort_order")
+        .order("sort_order", { ascending: false })
+        .limit(1)
+        .single(),
+    ]);
+
+    // ✅ FIX: determine correct from_week
+    const currentWeek = (latestRace?.sort_order ?? 0) + 1;
 
     const existingMap = new Map(
-      (existing ?? []).map((r: { bib: number; klasse: string }) => [r.bib, r.klasse])
+      (existing ?? []).map((r: { bib: number; klasse: string }) => [
+        r.bib,
+        r.klasse,
+      ])
     );
 
-    // Build history rows for any rider whose klasse has changed
     const historyRows = deelnemers
       .filter((d: { bib: number; klasse: string }) => {
         const oldKlasse = existingMap.get(d.bib);
@@ -61,21 +71,21 @@ export async function POST() {
         bib: d.bib,
         old_klasse: normalizeKlasse(existingMap.get(d.bib) as string),
         new_klasse: normalizeKlasse(d.klasse),
+        from_week: currentWeek,
       }));
 
     if (historyRows.length > 0) {
       const { error: histError } = await supabase
         .from("klasse_history")
         .insert(historyRows);
-      if (histError) console.error("klasse_history insert error:", histError);
+      if (histError) console.error(histError);
     }
 
     const { error } = await supabase
       .from("deelnemers")
-      .upsert(deelnemers, { onConflict: "bib", ignoreDuplicates: false });
+      .upsert(deelnemers, { onConflict: "bib" });
 
     if (error) {
-      console.error("Supabase upsert error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -86,7 +96,6 @@ export async function POST() {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Onbekende fout";
-    console.error("sync-deelnemers error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
