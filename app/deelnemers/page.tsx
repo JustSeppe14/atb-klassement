@@ -215,7 +215,6 @@ export default function DeelnemersPage() {
             {[
               { key: "bib", label: "Startnummer", type: "number", placeholder: "101", disabled: !!editingBib },
               { key: "naam", label: "Naam", type: "text", placeholder: "Jan Janssen" },
-              { key: "klasse", label: "Klasse", type: "text", placeholder: "A40+" },
               { key: "team", label: "Team", type: "text", placeholder: "Team naam" },
             ].map(({ key, label, type, placeholder, disabled }) => (
               <div key={key}>
@@ -229,8 +228,22 @@ export default function DeelnemersPage() {
               </div>
             ))}
             <div>
+              <label style={labelStyle}>Klasse</label>
+              <select className="input" style={{width: "100%"}} value={form.klasse ?? ""} onChange={(e) => setForm((f) => ({...f, klasse: e.target.value as Deelnemer["klasse"]}))}>
+                <option value="" disabled>-- Selecteer klasse --</option>
+                <option value="A">A</option>
+                <option value="A40+">A40+</option>
+                <option value="B">B</option>
+                <option value="B50+">B50+</option>
+                <option value="C">C</option>
+                <option value="D">D</option>
+                <option value="E">E</option>
+              </select>
+            </div>
+            <div>
               <label style={labelStyle}>Categorie</label>
-              <select className="input" style={{ width: "100%" }} value={form.categorie ?? "STA"} onChange={(e) => setForm((f) => ({ ...f, categorie: e.target.value as Deelnemer["categorie"] }))}>
+              <select className="input" style={{ width: "100%" }} value={form.categorie ?? ""} onChange={(e) => setForm((f) => ({ ...f, categorie: e.target.value as Deelnemer["categorie"] }))}>
+                <option value="" disabled>-- Selecteer categorie --</option>
                 <option value="STA">STA</option>
                 <option value="SEN">SEN</option>
                 <option value="DAM">DAM</option>

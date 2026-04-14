@@ -303,32 +303,23 @@ export default function InstellingenPage() {
                 <input type="number" className="input" style={{ width: "100%" }} value={scoring.capFinishPosition} onChange={(e) => setNum("capFinishPosition", e.target.value)} />
               </div>
             </div>
-            <div style={{ marginTop: "auto" }}>
-              <label style={labelStyle}>Schrapresultaten (%)</label>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <input type="number" className="input" style={{ width: 80 }} value={scoring.bestPct} onChange={(e) => setNum("bestPct", e.target.value)} />
-                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>% telt mee voor einduitslag</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="card" style={cardFlexStyle}>
-            <div style={sectionTitle}>Regelmatigheid</div>
             <div style={fieldGrid}>
               <div>
-                <label style={labelStyle}>Afwezig Punten</label>
-                <input type="number" className="input" style={{ width: "100%" }} value={scoring.regAbsentPoints} onChange={(e) => setNum("regAbsentPoints", e.target.value)} />
+                <label style={labelStyle}>Schrapresultaten (%)</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <input type="number" className="input" style={{ width: "100%" }} value={scoring.bestPct} onChange={(e) => setNum("bestPct", e.target.value)} />
+                </div>
+                  <span style={{ fontSize: 13, color: "var(--text-muted)" }}>% telt mee voor einduitslag</span>
               </div>
               <div>
-                <label style={labelStyle}>Finish Cap</label>
-                <input type="number" className="input" style={{ width: "100%" }} value={scoring.regCapFinish} onChange={(e) => setNum("regCapFinish", e.target.value)} />
+                <label style={labelStyle}>Klassewissel Compensatie</label>
+                <input type="number" className="input" style={{ width: "100%" }} value={scoring.klasseSwitchPoints} onChange={(e) => setNum("klasseSwitchPoints", e.target.value)} />
               </div>
             </div>
-            <div style={{ marginTop: "auto" }}>
-              <label style={labelStyle}>Klassewissel Compensatie</label>
-              <input type="number" className="input" style={{ width: "100%" }} value={scoring.klasseSwitchPoints} onChange={(e) => setNum("klasseSwitchPoints", e.target.value)} />
-            </div>
+            
           </div>
+
+          
         </div>
       </section>
 
