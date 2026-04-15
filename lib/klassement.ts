@@ -132,15 +132,31 @@ export function computeKlassement(
     for (const [, klasseDeelnemers] of klasseMap.entries()) {
       const klasseBibs = new Set(klasseDeelnemers.map((d) => d.bib));
 
-      const klasseResults = normalResults
-        .filter((r) => klasseBibs.has(r.bib))
-        .sort((a, b) => a.plaats - b.plaats);
+      // Use ALL results for this klasse (including switchers) to preserve
+// correct finish positions, but only award points to non-switchers.
+const allKlasseResults = weekResults
+  .filter((r) => klasseBibs.has(r.bib))
+  .sort((a, b) => a.plaats - b.plaats);
 
-      const bibPoints = new Map<number, number>();
-      klasseResults.forEach((r, idx) => {
-        const rank = idx + 1;
-        bibPoints.set(r.bib, rank <= capFinishPosition ? rank : capFinishPosition);
-      });
+const switcherBibs = new Set(
+  weekResults
+    .filter((r) => {
+      const currentKlasse = currentKlasseByBib.get(r.bib);
+      const raceKlasse = klasseForWeek(r.bib, week);
+      return currentKlasse && raceKlasse !== currentKlasse;
+    })
+    .map((r) => r.bib)
+);
+
+// Rank counts only non-switchers, but iterates the full sorted list
+// so gaps left by switchers don't shift other riders' positions.
+const bibPoints = new Map<number, number>();
+let rank = 0;
+for (const r of allKlasseResults) {
+  if (switcherBibs.has(r.bib)) continue; // flat points already assigned above
+  rank++;
+  bibPoints.set(r.bib, rank <= capFinishPosition ? rank : capFinishPosition);
+}
 
       for (const d of klasseDeelnemers) {
         if (pointsMap.get(d.bib)![raceName] !== undefined) continue;

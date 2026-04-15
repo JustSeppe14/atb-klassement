@@ -49,14 +49,14 @@ const sideBySideGrid: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))",
   gap: 24,
-  alignItems: "stretch", // Ensures children (cards) take full height
+  alignItems: "stretch",
 };
 
 const cardFlexStyle: React.CSSProperties = {
   padding: 24,
   display: "flex",
   flexDirection: "column",
-  height: "100%", // Ensures card fills grid cell
+  height: "100%",
 };
 
 export default function InstellingenPage() {
@@ -69,6 +69,11 @@ export default function InstellingenPage() {
   const [saving, setSaving] = useState(false);
   const [addingRace, setAddingRace] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  // Danger zone state
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearConfirmText, setClearConfirmText] = useState("");
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -176,6 +181,20 @@ export default function InstellingenPage() {
     }
   };
 
+  const handleClearAll = async () => {
+    setClearing(true);
+    const res = await fetch("/api/admin/clear", { method: "POST" });
+    if (res.ok) {
+      setToast({ message: "✓ Alle data gewist", type: "success" });
+      setShowClearConfirm(false);
+      setClearConfirmText("");
+    } else {
+      const json = await res.json();
+      setToast({ message: json.error ?? "Fout bij wissen", type: "error" });
+    }
+    setClearing(false);
+  };
+
   const setNum = (key: keyof ScoringConfig, raw: string) => {
     const val = parseInt(raw);
     if (!isNaN(val) && val > 0) setScoring((s) => ({ ...s, [key]: val }));
@@ -202,29 +221,29 @@ export default function InstellingenPage() {
   const toggle = (field: keyof SeasonConfig) => setConfig((c) => ({ ...c, [field]: !c[field] }));
 
   if (loading) {
-  return (
-    <div style={{ 
-      display: "flex", 
-      flexDirection: "column",
-      alignItems: "center", 
-      justifyContent: "center", 
-      minHeight: "80vh", // Centers vertically within most of the viewport
-      gap: 16 
-    }}>
-      <div className="spinner" />
-      <div style={{ 
-        color: "var(--text-muted)", 
-        fontFamily: "'Barlow Condensed', sans-serif",
-        textTransform: "uppercase",
-        letterSpacing: "0.1em",
-        fontSize: 14,
-        fontWeight: 600
+    return (
+      <div style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "80vh",
+        gap: 16,
       }}>
-        Laden...
+        <div className="spinner" />
+        <div style={{
+          color: "var(--text-muted)",
+          fontFamily: "'Barlow Condensed', sans-serif",
+          textTransform: "uppercase",
+          letterSpacing: "0.1em",
+          fontSize: 14,
+          fontWeight: 600,
+        }}>
+          Laden...
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 20px 120px 20px" }}>
@@ -241,25 +260,46 @@ export default function InstellingenPage() {
             <div style={sectionTitle}>Huidige Status</div>
             <div style={{ marginBottom: 20 }}>
               <label style={labelStyle}>Actieve Wedstrijd</label>
-              <select className="input" style={{ width: "100%" }} value={config.currentWeek} onChange={(e) => setConfig((c) => ({ ...c, currentWeek: parseInt(e.target.value) }))}>
-                {races.map((r) => (<option key={r.id} value={r.sort_order}>{r.name}</option>))}
+              <select
+                className="input"
+                style={{ width: "100%" }}
+                value={config.currentWeek}
+                onChange={(e) => setConfig((c) => ({ ...c, currentWeek: parseInt(e.target.value) }))}
+              >
+                {races.map((r) => (
+                  <option key={r.id} value={r.sort_order}>{r.name}</option>
+                ))}
               </select>
             </div>
             <div style={{ display: "grid", gap: 20 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-                <div onClick={() => toggle("isSecondPeriodStarted")} style={{ width: 44, height: 24, borderRadius: 12, background: config.isSecondPeriodStarted ? "var(--accent)" : "var(--border)", position: "relative", transition: "0.2s" }}>
+                <div
+                  onClick={() => toggle("isSecondPeriodStarted")}
+                  style={{ width: 44, height: 24, borderRadius: 12, background: config.isSecondPeriodStarted ? "var(--accent)" : "var(--border)", position: "relative", transition: "0.2s" }}
+                >
                   <div style={{ position: "absolute", top: 3, left: config.isSecondPeriodStarted ? 23 : 3, width: 18, height: 18, borderRadius: 9, background: "#fff", transition: "0.2s" }} />
                 </div>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>2e periode geactiveerd</div>
               </label>
               <div style={{ paddingLeft: 56 }}>
                 <label style={labelStyle}>Startpunt 2e periode</label>
-                <select className="input" style={{ width: "100%" }} disabled={!config.isSecondPeriodStarted} value={config.secondPeriodStartWeek} onChange={(e) => setConfig((c) => ({ ...c, secondPeriodStartWeek: parseInt(e.target.value) }))}>
-                  {races.map((r) => (<option key={r.id} value={r.sort_order}>{r.name}</option>))}
+                <select
+                  className="input"
+                  style={{ width: "100%" }}
+                  disabled={!config.isSecondPeriodStarted}
+                  value={config.secondPeriodStartWeek}
+                  onChange={(e) => setConfig((c) => ({ ...c, secondPeriodStartWeek: parseInt(e.target.value) }))}
+                >
+                  {races.map((r) => (
+                    <option key={r.id} value={r.sort_order}>{r.name}</option>
+                  ))}
                 </select>
               </div>
               <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-                <div onClick={() => toggle("seasonEnded")} style={{ width: 44, height: 24, borderRadius: 12, background: config.seasonEnded ? "var(--red)" : "var(--border)", position: "relative", transition: "0.2s" }}>
+                <div
+                  onClick={() => toggle("seasonEnded")}
+                  style={{ width: 44, height: 24, borderRadius: 12, background: config.seasonEnded ? "var(--red)" : "var(--border)", position: "relative", transition: "0.2s" }}
+                >
                   <div style={{ position: "absolute", top: 3, left: config.seasonEnded ? 23 : 3, width: 18, height: 18, borderRadius: 9, background: "#fff", transition: "0.2s" }} />
                 </div>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>Seizoen Afgesloten</div>
@@ -274,14 +314,30 @@ export default function InstellingenPage() {
                 <div key={race.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
                   <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: 11, color: "var(--text-muted)", width: 20 }}>{idx + 1}.</span>
                   <span style={{ fontWeight: 600, flex: 1 }}>{race.name}</span>
-                  <input type="date" className="input" style={{ width: 130, fontSize: 12, padding: "4px 8px" }} value={race.date ?? ""} onChange={(e) => handleUpdateDate(race, e.target.value)} />
-                  <button onClick={() => handleDeleteRace(race)} style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} /></button>
+                  <input
+                    type="date"
+                    className="input"
+                    style={{ width: 130, fontSize: 12, padding: "4px 8px" }}
+                    value={race.date ?? ""}
+                    onChange={(e) => handleUpdateDate(race, e.target.value)}
+                  />
+                  <button onClick={() => handleDeleteRace(race)} style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}>
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               ))}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <input className="input" style={{ flex: 1 }} placeholder="Nieuwe wedstrijd..." value={newRaceName} onChange={(e) => setNewRaceName(e.target.value)} />
-              <button className="btn-primary" onClick={handleAddRace} disabled={addingRace || !newRaceName.trim()} style={{ padding: "0 16px" }}><Plus size={16} /></button>
+              <input
+                className="input"
+                style={{ flex: 1 }}
+                placeholder="Nieuwe wedstrijd..."
+                value={newRaceName}
+                onChange={(e) => setNewRaceName(e.target.value)}
+              />
+              <button className="btn-primary" onClick={handleAddRace} disabled={addingRace || !newRaceName.trim()} style={{ padding: "0 16px" }}>
+                <Plus size={16} />
+              </button>
             </div>
           </div>
         </div>
@@ -309,17 +365,14 @@ export default function InstellingenPage() {
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <input type="number" className="input" style={{ width: "100%" }} value={scoring.bestPct} onChange={(e) => setNum("bestPct", e.target.value)} />
                 </div>
-                  <span style={{ fontSize: 13, color: "var(--text-muted)" }}>% telt mee voor einduitslag</span>
+                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>% telt mee voor einduitslag</span>
               </div>
               <div>
                 <label style={labelStyle}>Klassewissel Compensatie</label>
                 <input type="number" className="input" style={{ width: "100%" }} value={scoring.klasseSwitchPoints} onChange={(e) => setNum("klasseSwitchPoints", e.target.value)} />
               </div>
             </div>
-            
           </div>
-
-          
         </div>
       </section>
 
@@ -335,15 +388,34 @@ export default function InstellingenPage() {
                 <div style={{ flex: 1 }}>
                   {slots.map((slot, idx) => (
                     <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                      <select className="input" style={{ flex: 1 }} value={slot.cat ?? "ANY"} onChange={(e) => updateSlot(mode, idx, { cat: e.target.value === "ANY" ? null : e.target.value as TeamSlot["cat"] })}>
-                        {CATEGORIES.map((c) => <option key={c} value={c}>{c === "ANY" ? "Alle categorieën" : c}</option>)}
+                      <select
+                        className="input"
+                        style={{ flex: 1 }}
+                        value={slot.cat ?? "ANY"}
+                        onChange={(e) => updateSlot(mode, idx, { cat: e.target.value === "ANY" ? null : e.target.value as TeamSlot["cat"] })}
+                      >
+                        {CATEGORIES.map((c) => (
+                          <option key={c} value={c}>{c === "ANY" ? "Alle categorieën" : c}</option>
+                        ))}
                       </select>
-                      <input type="number" className="input" style={{ width: 70 }} value={slot.count} onChange={(e) => updateSlot(mode, idx, { count: parseInt(e.target.value) || 1 })} />
-                      <button onClick={() => removeSlot(mode, idx)} style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}><Trash2 size={14} /></button>
+                      <input
+                        type="number"
+                        className="input"
+                        style={{ width: 70 }}
+                        value={slot.count}
+                        onChange={(e) => updateSlot(mode, idx, { count: parseInt(e.target.value) || 1 })}
+                      />
+                      <button onClick={() => removeSlot(mode, idx)} style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}>
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   ))}
                 </div>
-                <button onClick={() => addSlot(mode)} className="btn-secondary" style={{ width: "100%", marginTop: 24, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 8, border: "1px dashed var(--border)", background: "none", color: "var(--text-muted)", borderRadius: 6, cursor: "pointer" }}>
+                <button
+                  onClick={() => addSlot(mode)}
+                  className="btn-secondary"
+                  style={{ width: "100%", marginTop: 24, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 8, border: "1px dashed var(--border)", background: "none", color: "var(--text-muted)", borderRadius: 6, cursor: "pointer" }}
+                >
                   <Plus size={14} /> Slot toevoegen
                 </button>
               </div>
@@ -352,13 +424,106 @@ export default function InstellingenPage() {
         </div>
       </section>
 
+      {/* ── SECTIE 4: DANGER ZONE ── */}
+      <section style={{ marginBottom: 48 }}>
+        <h2 style={{ ...groupHeaderStyle, color: "var(--red)" }}>Danger Zone</h2>
+        <div className="card" style={{ padding: 24, border: "1px solid var(--red)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24 }}>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
+                Alle rijders, resultaten & klassewissels verwijderen
+              </div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                Wedstrijden en instellingen blijven bewaard. Deze actie is onomkeerbaar.
+              </div>
+            </div>
+            <button
+              onClick={() => setShowClearConfirm(true)}
+              style={{
+                background: "var(--red)",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                padding: "10px 20px",
+                fontFamily: "'Barlow Condensed', sans-serif",
+                fontWeight: 700,
+                fontSize: 14,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Alles wissen
+            </button>
+          </div>
+        </div>
+      </section>
+
       {/* ── STICKY SAVE BAR ── */}
       <div style={{ position: "fixed", bottom: 0, left: "var(--side-bar-width)", right: 0, padding: "24px 0", background: "linear-gradient(transparent, var(--bg) 40%)", display: "flex", justifyContent: "center", zIndex: 100 }}>
-        <button className="btn-primary" onClick={handleSave} disabled={saving} style={{ width: "100%", maxWidth: 500, padding: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, boxShadow: "0 -10px 40px rgba(0,0,0,0.2)" }}>
+        <button
+          className="btn-primary"
+          onClick={handleSave}
+          disabled={saving}
+          style={{ width: "100%", maxWidth: 500, padding: 16, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, boxShadow: "0 -10px 40px rgba(0,0,0,0.2)" }}
+        >
           <Save size={20} />
           {saving ? "Opslaan..." : "Alle wijzigingen opslaan"}
         </button>
       </div>
+
+      {/* ── CLEAR CONFIRM MODAL ── */}
+      {showClearConfirm && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200,
+        }}>
+          <div className="card" style={{ padding: 32, maxWidth: 440, width: "90%" }}>
+            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 800, fontSize: 20, marginBottom: 8 }}>
+              Weet je het zeker?
+            </div>
+            <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 20 }}>
+              Typ <strong>VERWIJDER</strong> om te bevestigen. Rijders, resultaten en klassewissels worden permanent gewist.
+            </p>
+            <input
+              className="input"
+              style={{ width: "100%", marginBottom: 16 }}
+              placeholder="VERWIJDER"
+              value={clearConfirmText}
+              onChange={(e) => setClearConfirmText(e.target.value)}
+            />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                className="btn-secondary"
+                style={{ flex: 1 }}
+                onClick={() => { setShowClearConfirm(false); setClearConfirmText(""); }}
+              >
+                Annuleren
+              </button>
+              <button
+                disabled={clearConfirmText !== "VERWIJDER" || clearing}
+                onClick={handleClearAll}
+                style={{
+                  flex: 1,
+                  background: clearConfirmText === "VERWIJDER" ? "var(--red)" : "var(--border)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: "10px 0",
+                  fontFamily: "'Barlow Condensed', sans-serif",
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: clearConfirmText === "VERWIJDER" ? "pointer" : "not-allowed",
+                  transition: "background 0.2s",
+                }}
+              >
+                {clearing ? "Bezig..." : "Definitief wissen"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
