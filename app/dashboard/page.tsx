@@ -43,10 +43,15 @@ export default function DashboardPage() {
 
   const currentYear = new Date().getFullYear();
 
-
-
-
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const currentRaceLabel = (() => {
+    if (!data?.config.currentWeek || !data?.races) return "Laden...";
+    const raceIndex = data.races.findIndex((r) => r.sort_order === data.config.currentWeek);
+    if (raceIndex === -1) return "Laden...";
+    const race = data.races[raceIndex];
+    return `Race ${raceIndex + 1} — ${race.name}`;
+  })();
 
   return (
     <div style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto" }}>
@@ -57,9 +62,7 @@ export default function DashboardPage() {
             Klassement <span style={{ color: "var(--accent)" }}>{currentYear}</span>
           </h1>
           <div style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 4 }}>
-            {data?.config.currentWeek
-              ? `Week ${data.config.currentWeek} — ${data.races?.find((r) => r.sort_order === data.config.currentWeek)?.name ?? ""}`
-              : "Laden..."}
+            {currentRaceLabel}
           </div>
         </div>
         <button className="btn-secondary" onClick={fetchData} style={{ display: "flex", alignItems: "center", gap: 8 }}>
