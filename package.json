@@ -9,16 +9,16 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.101.1",
+    "@supabase/supabase-js": "^2.104.0",
     "@types/nodemailer": "^7.0.11",
     "bcryptjs": "^3.0.3",
     "jspdf": "^4.2.1",
-    "lucide-react": "^1.7.0",
-    "next": "16.2.2",
-    "nodemailer": "^8.0.4",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "xlsx": "^0.18.5"
+    "lucide-react": "^1.8.0",
+    "next": "^16.2.4",
+    "nodemailer": "^8.0.5",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@netlify/functions": "^5.1.5",
@@ -30,7 +30,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.2",
+    "eslint-config-next": "^16.2.4",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
