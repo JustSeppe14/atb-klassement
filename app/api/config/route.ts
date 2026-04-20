@@ -60,6 +60,10 @@ export async function POST(req: NextRequest) {
 
       ...(body.teamStaSlots       != null && { team_sta_slots:      body.teamStaSlots }),
       ...(body.teamMixedSlots     != null && { team_mixed_slots:    body.teamMixedSlots }),
+
+      ...(body.minRacesFirstHalf  != null && { min_races_first_half: body.minRacesFirstHalf}),
+      ...(body.minRacesSecondHalf != null && { min_races_second_half: body.minRacesSecondHalf}),
+      ...(body.minRacesTotal      != null && { min_races_total:     body.minRacesTotal})
     });
 
     if (error) throw error;

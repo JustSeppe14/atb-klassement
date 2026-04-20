@@ -34,7 +34,7 @@ export function computeKlassement(
   klasseSwitches: KlasseSwitch[] = []
 ): KlassementRow[] {
   const { isSecondPeriodStarted, secondPeriodStartWeek } = config;
-  const { maxPoints, capFinishPosition, bestPct, klasseSwitchPoints } = scoringCfg;
+  const { maxPoints, capFinishPosition, bestPct, klasseSwitchPoints, minRacesFirstHalf, minRacesSecondHalf, minRacesTotal } = scoringCfg;
   const bestFraction = bestPct / 100;
 
   const raceByOrder = new Map<number, string>(
@@ -157,11 +157,18 @@ export function computeKlassement(
   }
 
   // ---- Helpers ----
-  function sumBestPct(points: number[]): number {
-    if (!points.length) return 0;
-    const sorted = [...points].sort((a, b) => a - b);
-    const count = Math.ceil(points.length * bestFraction);
-    return sorted.slice(0, count).reduce((sum, p) => sum + p, 0);
+  function sumBestPct(points: number[], minRaces: number): number {
+    const racesCompleted = points.length;
+    if(racesCompleted === 0 ) return 0;
+
+    const sorted = [...points].sort((a,b) => a - b);
+
+    if (racesCompleted < minRaces) {
+      return sorted.reduce((sum, p) => sum + p, 0);
+    }
+
+    const countToKeep = Math.ceil(racesCompleted * bestFraction);
+    return sorted.slice(0, countToKeep).reduce((sum, p) => sum + p, 0)
   }
 
   function countPodiums(weekPoints: Record<string, number>) {
@@ -172,26 +179,27 @@ export function computeKlassement(
   const rows: KlassementRow[] = normalized.map((d) => {
     const weekPoints = pointsMap.get(d.bib) ?? {};
 
-    for (const week of weeksWithResults) {
-      const raceName = getRaceName(week);
-      if (weekPoints[raceName] === undefined) weekPoints[raceName] = maxPoints;
-    }
+    // Filter out 'maxPoints' (absences) to count actual participation
+    const getActualPoints = (weeks: number[]) => 
+      weeks.map(w => weekPoints[getRaceName(w)]).filter(p => p !== undefined && p < maxPoints);
 
-    const allPointValues = weeksWithResults.map(
-      (w) => weekPoints[getRaceName(w)] ?? maxPoints
-    );
+    const allWeeks = weeksWithResults;
+    const firstPeriodWeeks = isSecondPeriodStarted 
+        ? allWeeks.filter(w => w < secondPeriodStartWeek) 
+        : allWeeks;
+    const secondPeriodWeeks = isSecondPeriodStarted 
+        ? allWeeks.filter(w => w >= secondPeriodStartWeek) 
+        : [];
 
-    const firstPeriodValues = isSecondPeriodStarted
-      ? weeksWithResults
-          .filter((w) => w < secondPeriodStartWeek)
-          .map((w) => weekPoints[getRaceName(w)] ?? maxPoints)
-      : allPointValues;
+    // Points arrays including absences (maxPoints) for the math, 
+    // but we count actual participations for the threshold.
+    const firstPeriodValues = firstPeriodWeeks.map(w => weekPoints[getRaceName(w)] ?? maxPoints);
+    const secondPeriodValues = secondPeriodWeeks.map(w => weekPoints[getRaceName(w)] ?? maxPoints);
+    const totalValues = [...firstPeriodValues, ...secondPeriodValues];
 
-    const secondPeriodValues = isSecondPeriodStarted
-      ? weeksWithResults
-          .filter((w) => w >= secondPeriodStartWeek)
-          .map((w) => weekPoints[getRaceName(w)] ?? maxPoints)
-      : [];
+    const actualRacesFirst = getActualPoints(firstPeriodWeeks).length;
+    const actualRacesSecond = getActualPoints(secondPeriodWeeks).length;
+    const actualRacesTotal = actualRacesFirst + actualRacesSecond;
 
     return {
       bib: d.bib,
@@ -200,9 +208,9 @@ export function computeKlassement(
       categorie: d.categorie,
       team: d.team,
       weekPoints,
-      eerstePeriode: sumBestPct(firstPeriodValues),
-      tweedePeriode: sumBestPct(secondPeriodValues),
-      totaal: sumBestPct([...firstPeriodValues, ...secondPeriodValues]),
+      eerstePeriode: sumBestPct(firstPeriodValues, minRacesFirstHalf),
+      tweedePeriode: sumBestPct(secondPeriodValues, minRacesSecondHalf),
+      totaal: sumBestPct(totalValues, minRacesTotal),
       plaatsKlasse: 0,
     };
   });

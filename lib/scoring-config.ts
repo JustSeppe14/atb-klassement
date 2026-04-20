@@ -15,6 +15,9 @@ export interface ScoringConfig {
   klasseSwitchPoints: number; // points awarded for races in old klasse after a switch (was hardcoded: 50)
   teamStaSlots: TeamSlot[];   // team STA composition
   teamMixedSlots: TeamSlot[]; // team Mixed composition
+  minRacesFirstHalf: number;
+  minRacesSecondHalf: number;
+  minRacesTotal: number;
 }
 
 export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
@@ -31,6 +34,10 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
     { cat: "SEN", count: 1 },
     { cat: "DAM", count: 1 },
   ],
+  minRacesFirstHalf: 0,
+  minRacesSecondHalf: 0,
+  minRacesTotal: 0,
+
 };
 
 /** Maps a raw Supabase config row → ScoringConfig */
@@ -45,6 +52,9 @@ export function parseScoringConfig(row: Record<string, unknown>): ScoringConfig 
     klasseSwitchPoints:  typeof row.klasse_switch_points  === "number" ? row.klasse_switch_points  : DEFAULT_SCORING_CONFIG.klasseSwitchPoints,
     teamStaSlots:        Array.isArray(row.team_sta_slots)             ? row.team_sta_slots        : DEFAULT_SCORING_CONFIG.teamStaSlots,
     teamMixedSlots:      Array.isArray(row.team_mixed_slots)           ? row.team_mixed_slots      : DEFAULT_SCORING_CONFIG.teamMixedSlots,
+    minRacesFirstHalf:   typeof row.min_races_first_half  === "number" ? row.min_races_first_half  : DEFAULT_SCORING_CONFIG.minRacesFirstHalf,
+    minRacesSecondHalf:  typeof row.min_races_second_half === "number" ? row.min_races_second_half : DEFAULT_SCORING_CONFIG.minRacesSecondHalf,
+    minRacesTotal:       typeof row.min_races_total       === "number" ? row.min_races_total       : DEFAULT_SCORING_CONFIG.minRacesTotal
   };
 }
 
@@ -60,5 +70,8 @@ export function scoringConfigToDb(cfg: ScoringConfig): Record<string, unknown> {
     klasse_switch_points: cfg.klasseSwitchPoints,
     team_sta_slots:       cfg.teamStaSlots,
     team_mixed_slots:     cfg.teamMixedSlots,
+    min_races_first_half: cfg.minRacesFirstHalf,
+    min_races_second_half: cfg.minRacesSecondHalf,
+    min_races_total:      cfg.minRacesTotal
   };
 }

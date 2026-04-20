@@ -97,6 +97,9 @@ export default function InstellingenPage() {
           klasseSwitchPoints: configData.klasseSwitchPoints ?? DEFAULT_SCORING_CONFIG.klasseSwitchPoints,
           teamStaSlots: configData.teamStaSlots ?? DEFAULT_SCORING_CONFIG.teamStaSlots,
           teamMixedSlots: configData.teamMixedSlots ?? DEFAULT_SCORING_CONFIG.teamMixedSlots,
+          minRacesFirstHalf: configData.minRacesFirstHalf ?? DEFAULT_SCORING_CONFIG.minRacesFirstHalf,
+          minRacesSecondHalf: configData.minRacesSecondHalf ?? DEFAULT_SCORING_CONFIG.minRacesSecondHalf,
+          minRacesTotal: configData.minRacesTotal ?? DEFAULT_SCORING_CONFIG.minRacesTotal
         });
       }
       setRaces(racesData ?? []);
@@ -360,12 +363,28 @@ export default function InstellingenPage() {
               </div>
             </div>
             <div style={fieldGrid}>
-              <div>
-                <label style={labelStyle}>Schrapresultaten (%)</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={fieldGrid}>
+                <div>
+                  <label style={labelStyle}>Schrapresultaten (%)</label>
                   <input type="number" className="input" style={{ width: "100%" }} value={scoring.bestPct} onChange={(e) => setNum("bestPct", e.target.value)} />
+                  <span style={{ fontSize: 13, color: "var(--text-muted)" }}>% telt mee voor einduitslag</span>
                 </div>
-                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>% telt mee voor einduitslag</span>
+                <div>
+                  <label style={labelStyle}>Min. Deelnames (Totaal)</label>
+                  <input type="number" className="input" style={{ width: "100%" }} value={scoring.minRacesTotal} onChange={(e) => setNum("minRacesTotal", e.target.value)} />
+                  <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Drempel voor schrapresultaten</span>
+                </div>
+              </div>
+
+              <div style={fieldGrid}>
+                <div>
+                  <label style={labelStyle}>Min. Deelnames (1e Periode)</label>
+                  <input type="number" className="input" style={{ width: "100%" }} value={scoring.minRacesFirstHalf} onChange={(e) => setNum("minRacesFirstHalf", e.target.value)} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Min. Deelnames (2e Periode)</label>
+                  <input type="number" className="input" style={{ width: "100%" }} value={scoring.minRacesSecondHalf} onChange={(e) => setNum("minRacesSecondHalf", e.target.value)} />
+                </div>
               </div>
               <div>
                 <label style={labelStyle}>Klassewissel Compensatie</label>
