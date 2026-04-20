@@ -12,20 +12,30 @@ export default function RegelmatigheidTab({ data }: { data: RegEntry[] }) {
   // Filter and Sort Logic:
   // 1. Primary Sort: Lowest Points (Sum of Ranks) = Position 1
   // 2. Secondary Sort: More Participations = Tie-breaker for equal points
-  const sortedData = [...data]
-    .filter((r) => filter === "all" || r.klasse === filter)
-    .sort((a, b) => {
-      if (a.punten !== b.punten) {
-        return a.punten - b.punten; // Sequential: 10 points beats 50 points
-      }
-      return b.aantalDeelnames - a.aantalDeelnames; // More races = better rank if points tied
-    });
+  const sortedData = [...data].filter((r) => {
+    if(filter === 'all') return true;
+    if(filter === 'A') return r.klasse === 'A' || r.klasse === 'A40+';
+    if(filter === 'B') return r.klasse === 'B' || r.klasse === 'B50+';
+    return r.klasse === filter;
+  }).sort((a,b) => {
+    if(a.punten !== b.punten) return a.punten - b.punten;
+    return b.aantalDeelnames - a.aantalDeelnames;
+  })
+
+  const klasseButtons = ["all", ...Array.from(
+    new Set(data.map((r) => {
+      const k = r.klasse;
+      if(k === 'A' || k === 'A40+') return 'A';
+      if(k === 'B' || k === 'B50+') return 'B';
+      return k
+    }))
+  ).sort()]
 
   return (
     <>
       {/* Category Selection */}
       <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
-        {klasses.map((k) => (
+        {klasseButtons.map((k) => (
           <button 
             key={k} 
             onClick={() => setFilter(k)} 

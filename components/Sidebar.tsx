@@ -12,6 +12,7 @@ const allNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, protected: false },
   { href: "/upload", label: "Uitslag uploaden", icon: Upload, protected: true },
   { href: "/deelnemers", label: "Deelnemers", icon: Users, protected: true },
+  {href: '/startlijst', label: "Startlijst", icon: Users, protected: true},
   { href: "/email", label: "E-mail versturen", icon: Mail, protected: true },
   { href: "/instellingen", label: "Instellingen", icon: Settings, protected: true },
 ];
