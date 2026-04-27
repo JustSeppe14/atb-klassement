@@ -13,6 +13,7 @@ type RegEntry = {
 
 const getPoolKey = (klasse: string) => {
   if (klasse === "A40+") return "A";
+  if (klasse === "B50+") return "B";
   return klasse;
 };
 
@@ -62,7 +63,8 @@ function fileToDataURL(file: File): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// PDF generation
+// PDF generation — layout gebaseerd op xlsx-voorbeeld
+// Kolommen: Plaats | Nr. | Naam | Klasse | X | Handtekening
 // ---------------------------------------------------------------------------
 async function generatePDF(
   rows: ReturnType<typeof buildStartlist>,
@@ -73,80 +75,178 @@ async function generatePDF(
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = 210;
   const pageH = 297;
-  const marginL = 14;
-  const marginR = 14;
+  const marginL = 10;
+  const marginR = 10;
   const contentW = pageW - marginL - marginR;
 
-  const accentColor: [number, number, number] = [220, 38, 38];
-  const darkColor: [number, number, number] = [15, 15, 20];
-  const mutedColor: [number, number, number] = [120, 120, 130];
-  const lightBg: [number, number, number] = [245, 245, 248];
-  const white: [number, number, number] = [255, 255, 255];
+  // Kleuren
+  const black:      [number, number, number] = [0, 0, 0];
+  const white:      [number, number, number] = [255, 255, 255];
+  const headerBg:   [number, number, number] = [197, 217, 241]; // lichtblauw kolomkoppen
+  const evenBg:     [number, number, number] = [221, 235, 247]; // lichtblauw even rijen
+  const accentRed:  [number, number, number] = [220, 38, 38];   // rode letter in titel
+  const borderClr:  [number, number, number] = [140, 140, 140];
 
-  const headerH = logoDataUrl ? 48 : 36;
-
+  // Kolom-definities  (totaal = contentW = 190 mm)
+  // Plaats | Nr. | Naam | Klasse | X | Handtekening
   const cols = [
-    { label: "#", key: "startNr", w: 14, align: "center" as const },
-    { label: "Nr.", key: "bib", w: 14, align: "center" as const },
-    { label: "Naam", key: "naam", w: 100, align: "left" as const },
-    { label: "Klasse", key: "klasse", w: 22, align: "center" as const },
-    { label: "Reg. Rank", key: "regRank", w: 22, align: "center" as const },
+    { label: "Plaats",       key: "startNr",  w: 16,  align: "center" as const },
+    { label: "Nr.",          key: "bib",      w: 16,  align: "center" as const },
+    { label: "Naam",         key: "naam",     w: 82,  align: "left"   as const },
+    { label: "Klasse",       key: "klasse",   w: 18,  align: "center" as const },
+    { label: "X",            key: "x",        w: 14,  align: "center" as const },
+    { label: "Handtekening", key: "sig",      w: 44,  align: "left"   as const },
   ];
 
   const colX: number[] = [];
   let cx = marginL;
-  for (const col of cols) {
-    colX.push(cx);
-    cx += col.w;
-  }
+  for (const col of cols) { colX.push(cx); cx += col.w; }
 
-  const rowH = 7.5;
+  const rowH   = 6.5;   // rijhoogte data
+  const colHdrH = 7;    // kolomkoppenrij
+  const titleH  = 12;   // paginatitel
+  const topPad  = 6;    // ruimte boven titel
 
-  // Get unique pools in order
+  // Unieke pools in volgorde
   const pools: string[] = [];
   for (const row of rows) {
     if (!pools.includes(row.pool)) pools.push(row.pool);
   }
 
-  const drawHeader = (pool: string) => {
-    doc.setFillColor(...darkColor);
-    doc.rect(0, 0, pageW, headerH, "F");
-    doc.setFillColor(...accentColor);
-    doc.rect(0, headerH - 3, pageW, 3, "F");
+  // -----------------------------------------------------------------------
+  // Hulpfuncties
+  // -----------------------------------------------------------------------
 
+  /** Teken de pagina-titel  "STARTVOLGORDE A - KLASSE" */
+  const drawPageTitle = (pool: string, y: number) => {
+    // Achtergrond volledig wit — geen header-balk
+    // Tekst centred
+    const cx2 = pageW / 2;
+
+    // "STARTVOLGORDE " + pool (rood) + " - KLASSE"
+    const prefix = "STARTVOLGORDE ";
+    const suffix = " - KLASSE";
+    const fontSize = 14;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(fontSize);
+    doc.setTextColor(...black);
+
+    const prefixW = doc.getTextWidth(prefix);
+    const poolW   = doc.getTextWidth(pool);
+    const suffixW = doc.getTextWidth(suffix);
+    const totalW  = prefixW + poolW + suffixW;
+    let tx = cx2 - totalW / 2;
+
+    doc.text(prefix, tx, y);
+    tx += prefixW;
+
+    doc.setTextColor(...accentRed);
+    doc.text(pool, tx, y);
+    tx += poolW;
+
+    doc.setTextColor(...black);
+    doc.text(suffix, tx, y);
+
+    // Optioneel logo rechts
     if (logoDataUrl) {
       try {
         const ext = logoDataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
-        doc.addImage(logoDataUrl, ext, pageW - 46, 4, 32, 32);
+        doc.addImage(logoDataUrl, ext, pageW - marginR - 20, y - 9, 18, 10);
       } catch (e) {
         console.warn("Logo kon niet worden toegevoegd:", e);
       }
     }
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
-    doc.setTextColor(...white);
-    doc.text(`STARTLIJST KLASSE ${pool}`, marginL, 16);
-
+    // Wedstrijdnaam + datum kleine tekst onder de titel
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(200, 200, 210);
-    doc.text(raceName || "Wedstrijd", marginL, 26);
-    doc.text(raceDate || "", marginL, 32);
+    doc.setFontSize(8);
+    doc.setTextColor(80, 80, 80);
+    if (raceName) doc.text(raceName, cx2, y + 5, { align: "center" });
+    if (raceDate) doc.text(raceDate, cx2, y + 9, { align: "center" });
   };
 
+  /** Teken de kolomkoppen-balk */
   const drawColHeaders = (y: number) => {
-    doc.setFillColor(...accentColor);
-    doc.rect(marginL, y, contentW, rowH, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(...white);
+    // Achtergrond
+    doc.setFillColor(...headerBg);
+    doc.rect(marginL, y, contentW, colHdrH, "F");
+
+    // Buitenrand + verticale scheidingslijnen
+    doc.setDrawColor(...borderClr);
+    doc.setLineWidth(0.3);
+    doc.rect(marginL, y, contentW, colHdrH, "S");
     cols.forEach((col, i) => {
-      const tx = col.align === "center" ? colX[i] + col.w / 2 : colX[i] + 2;
-      doc.text(col.label, tx, y + 5, { align: col.align });
+      if (i > 0) {
+        doc.line(colX[i], y, colX[i], y + colHdrH);
+      }
+    });
+
+    // Labels — vet cursief
+    doc.setFont("helvetica", "bolditalic");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...black);
+    cols.forEach((col, i) => {
+      const tx = col.align === "center"
+        ? colX[i] + col.w / 2
+        : colX[i] + 2;
+      doc.text(col.label, tx, y + colHdrH - 2, { align: col.align });
     });
   };
 
+  /** Teken één datarij */
+  const drawDataRow = (row: typeof rows[0], rowIndex: number, y: number) => {
+    const isEven = rowIndex % 2 === 0;
+
+    // Achtergrond
+    if (isEven) {
+      doc.setFillColor(...evenBg);
+      doc.rect(marginL, y, contentW, rowH, "F");
+    } else {
+      doc.setFillColor(...white);
+      doc.rect(marginL, y, contentW, rowH, "F");
+    }
+
+    // Horizontale onderrand + verticale lijnen
+    doc.setDrawColor(...borderClr);
+    doc.setLineWidth(0.15);
+    doc.line(marginL, y + rowH, marginL + contentW, y + rowH);
+    cols.forEach((_, i) => {
+      if (i > 0) doc.line(colX[i], y, colX[i], y + rowH);
+    });
+    // Linker- en rechterrand
+    doc.line(marginL, y, marginL, y + rowH);
+    doc.line(marginL + contentW, y, marginL + contentW, y + rowH);
+
+    // Celwaarden
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...black);
+
+    const values: Record<string, string> = {
+      startNr: String(row.startNr),
+      bib:     String(row.bib),
+      naam:    row.naam,
+      klasse:  row.pool,
+      x:       "",
+      sig:     "",
+    };
+
+    cols.forEach((col, i) => {
+      if (col.key === "x" || col.key === "sig") return; // lege cellen
+      const val = values[col.key] ?? "";
+      const maxChars = Math.floor(col.w / 1.9);
+      const display  = val.length > maxChars ? val.slice(0, maxChars - 1) + "…" : val;
+      const tx = col.align === "center"
+        ? colX[i] + col.w / 2
+        : colX[i] + 2;
+      doc.text(display, tx, y + rowH - 1.8, { align: col.align });
+    });
+  };
+
+  // -----------------------------------------------------------------------
+  // Hoofdlus — één pool per pagina (of meer pagina's bij veel renners)
+  // -----------------------------------------------------------------------
   let isFirstPool = true;
 
   for (const pool of pools) {
@@ -155,64 +255,28 @@ async function generatePDF(
     if (!isFirstPool) doc.addPage();
     isFirstPool = false;
 
-    drawHeader(pool);
+    // Titel bovenaan de eerste pagina van deze pool
+    const titleY = topPad + titleH;
+    drawPageTitle(pool, titleY);
 
-    let y = headerH + 4;
+    // Extra ruimte als er wedstrijdinfo staat
+    const extraInfo = (raceName ? 5 : 0) + (raceDate ? 4 : 0);
+    let y = titleY + 10 + extraInfo;
+
     drawColHeaders(y);
-    y += rowH;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.5);
+    y += colHdrH;
 
     poolRows.forEach((row, rowIndex) => {
-      if (y > pageH - 14) {
+      // Nieuwe pagina indien nodig
+      if (y + rowH > pageH - 8) {
         doc.addPage();
-        y = 10;
+        y = topPad;
         drawColHeaders(y);
-        y += rowH;
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(8.5);
+        y += colHdrH;
       }
-
-      const isEven = rowIndex % 2 === 0;
-      doc.setFillColor(...(isEven ? lightBg : white));
-      doc.rect(marginL, y, contentW, rowH, "F");
-      doc.setTextColor(...darkColor);
-
-      const values: Record<string, string> = {
-        startNr: String(row.startNr),
-        bib: String(row.bib),
-        naam: row.naam,
-        klasse: row.klasse,
-        regRank: String(row.regRank),
-      };
-
-      cols.forEach((col, i) => {
-        const val = values[col.key] ?? "";
-        const tx = col.align === "center" ? colX[i] + col.w / 2 : colX[i] + 2;
-        const maxChars = Math.floor(col.w / 1.8);
-        const display = val.length > maxChars ? val.slice(0, maxChars - 1) + "…" : val;
-        doc.text(display, tx, y + 5, { align: col.align });
-      });
-
-      doc.setDrawColor(220, 220, 225);
-      doc.setLineWidth(0.1);
-      doc.line(marginL, y + rowH, marginL + contentW, y + rowH);
+      drawDataRow(row, rowIndex, y);
       y += rowH;
     });
-  }
-
-  // Footer on every page
-  const totalPages = doc.getNumberOfPages();
-  for (let p = 1; p <= totalPages; p++) {
-    doc.setPage(p);
-    doc.setFillColor(...darkColor);
-    doc.rect(0, pageH - 10, pageW, 10, "F");
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7);
-    doc.setTextColor(...mutedColor);
-    doc.text(`Pagina ${p} / ${totalPages}`, pageW / 2, pageH - 3.5, { align: "center" });
-    doc.text(`Gegenereerd op ${new Date().toLocaleDateString("nl-BE")}`, marginL, pageH - 3.5);
   }
 
   return doc.output("blob");

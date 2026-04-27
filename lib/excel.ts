@@ -1,23 +1,29 @@
 import * as XLSX from "xlsx";
-import { Deelnemer, KlassementRow, Race, normalizeKlasse } from "./utils";
-import { RaceResult } from "./utils";
+import { Deelnemer, KlassementRow, Race, normalizeKlasse, RaceResult, ParsedResult } from "./utils";
+
 
 // --- PARSE FINISH RESULTS FILE ---
-export function parseFinishFile(buffer: ArrayBuffer): RaceResult[] {
+export function parseFinishFile(buffer: ArrayBuffer): ParsedResult[] {
   const wb = XLSX.read(buffer, { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(ws, {
     defval: null,
   });
 
-  const results: RaceResult[] = [];
+  const results: ParsedResult[] = [];
   for (const row of rows) {
-    const bib = parseInt(String(row["bib"] ?? row["BIB"] ?? row["Bib"] ?? ""));
+    const bibRaw = parseInt(
+      String(row["bib"] ?? row["BIB"] ?? row["Bib"] ?? "")
+    );
     const plaats = parseInt(
       String(row["pl"] ?? row["PL"] ?? row["Pl"] ?? row["plaats"] ?? row["Plaats"] ?? "")
     );
-    if (!isNaN(bib) && !isNaN(plaats)) {
-      results.push({ bib, plaats, week: 0 });
+    const naam =
+      String(row["naam"] ?? row["NAAM"] ?? row["Naam"] ?? "").trim() || null;
+
+    const bib = isNaN(bibRaw) ? null : bibRaw;
+    if (!isNaN(plaats) && (bib !== null || naam !== null)) {
+      results.push({ bib, naam, plaats });
     }
   }
   return results;
@@ -90,57 +96,134 @@ export interface RegelmatigheidRow {
   aantalDeelnames: number;
   punten: number;
 }
-
+ 
 export interface TeamRow {
   team: string;
   punten: number;
   riders: string[];
 }
-
+ 
 export function exportKlassementToExcel(
   rows: KlassementRow[],
   regelmatigheid: RegelmatigheidRow[] = [],
   teamSTA: TeamRow[] = [],
   teamMixed: TeamRow[] = [],
-  races: Race[] = []
+  races: Race[] = [],
+  allResults: RaceResult[] = [],       // needed for raw finish positions in regelmatigheid sheet
+  maxPoints: number = 80,              // pass scoringCfg.maxPoints
+  secondPeriodStartWeek: number = 0    // pass config.secondPeriodStartWeek; 0 = not started
 ): Buffer {
   const wb = XLSX.utils.book_new();
-
-  // Race names in sort_order
+ 
   const allRaceNames = races.map((r) => r.name);
-
-  // Group rows by klasse
-  const klasseMap = new Map<string, KlassementRow[]>();
-  for (const row of rows) {
-    if (!klasseMap.has(row.klasse)) klasseMap.set(row.klasse, []);
-    klasseMap.get(row.klasse)!.push(row);
+ 
+  // ── Period split ──────────────────────────────────────────────────────────
+  const eersteRaces = races.filter(
+    (r) => secondPeriodStartWeek === 0 || r.sort_order < secondPeriodStartWeek
+  );
+  const tweedeRaces = races.filter(
+    (r) => secondPeriodStartWeek > 0 && r.sort_order >= secondPeriodStartWeek
+  );
+ 
+  function countParticipated(row: KlassementRow, raceSubset: Race[]): number {
+    return raceSubset.filter((r) => {
+      const pts = row.weekPoints[r.name];
+      return pts !== undefined && pts < maxPoints;
+    }).length;
   }
-
+ 
+  // ── Tiebreak helper ───────────────────────────────────────────────────────
+  function countPodiums(wp: Record<string, number>) {
+    return Object.values(wp).filter((p) => p <= 3).length;
+  }
+ 
+  // ── Global ranking (klassement) ───────────────────────────────────────────
+  const globalSorted = [...rows].sort((a, b) => {
+    if (a.totaal !== b.totaal) return a.totaal - b.totaal;
+    const ap = countPodiums(a.weekPoints);
+    const bp = countPodiums(b.weekPoints);
+    if (ap !== bp) return bp - ap;
+    return a.bib - b.bib;
+  });
+  const globalRankMap = new Map<number, number>();
+  globalSorted.forEach((r, idx) => globalRankMap.set(r.bib, idx + 1));
+ 
+  // ── Per-class per-categorie ranking ───────────────────────────────────────
+  const klasseCategMap = new Map<string, Map<string, KlassementRow[]>>();
+  for (const row of rows) {
+    if (!klasseCategMap.has(row.klasse))
+      klasseCategMap.set(row.klasse, new Map());
+    const cm = klasseCategMap.get(row.klasse)!;
+    if (!cm.has(row.categorie)) cm.set(row.categorie, []);
+    cm.get(row.categorie)!.push(row);
+  }
+  for (const cm of klasseCategMap.values()) {
+    for (const [cat, catRows] of cm.entries()) {
+      cm.set(
+        cat,
+        [...catRows].sort((a, b) => {
+          if (a.totaal !== b.totaal) return a.totaal - b.totaal;
+          const ap = countPodiums(a.weekPoints);
+          const bp = countPodiums(b.weekPoints);
+          if (ap !== bp) return bp - ap;
+          return a.bib - b.bib;
+        })
+      );
+    }
+  }
+  const categRankMap = new Map<number, { STA?: number; SEN?: number; DAM?: number }>();
+  for (const cm of klasseCategMap.values()) {
+    for (const [cat, catRows] of cm.entries()) {
+      catRows.forEach((r, idx) => {
+        if (!categRankMap.has(r.bib)) categRankMap.set(r.bib, {});
+        const entry = categRankMap.get(r.bib)!;
+        if (cat === "STA") entry.STA = idx + 1;
+        else if (cat === "SEN") entry.SEN = idx + 1;
+        else if (cat === "DAM") entry.DAM = idx + 1;
+      });
+    }
+  }
+ 
+  // ── Klasse sort order ─────────────────────────────────────────────────────
   const klasseOrder = ["A", "A40+", "B", "B50+", "C", "D", "E"];
   const klasseSortIndex = (k: string) => {
     const i = klasseOrder.indexOf(k);
     return i === -1 ? 999 : i;
   };
-
-  // Sheet: KLASSEMENT — sorted by class order, then plaatsKlasse
+ 
   const sortedRows = [...rows].sort((a, b) => {
     const ki = klasseSortIndex(a.klasse) - klasseSortIndex(b.klasse);
     if (ki !== 0) return ki;
     return a.plaatsKlasse - b.plaatsKlasse;
   });
-
-  const klassementData = sortedRows.map((row) => {
-    const base: Record<string, unknown> = {
-      "Nr.": row.bib,
-      Naam: row.naam,
-      Klasse: row.klasse,
-      "Cat.": row.categorie,
-      Team: row.team ?? "",
-      "Plaats Klasse": row.plaatsKlasse,
-      "1e Periode": row.eerstePeriode,
-      "2e Periode": row.tweedePeriode,
-      Totaal: row.totaal,
+ 
+  // ── Shared base columns builder ───────────────────────────────────────────
+  function buildBaseColumns(
+    row: KlassementRow,
+    plaatsOverride: number | string
+  ): Record<string, unknown> {
+    const catRanks = categRankMap.get(row.bib) ?? {};
+    return {
+      "Plaats":             plaatsOverride,
+      "Nr.":                row.bib,
+      "Naam":               row.naam,
+      "Klasse":             row.klasse,
+      "Plaats klasse":      row.plaatsKlasse,
+      "Cat.":               row.categorie,
+      "Plaats STA":         catRanks.STA ?? "",
+      "Plaats SEN":         catRanks.SEN ?? "",
+      "Plaats DAM":         catRanks.DAM ?? "",
+      "Aantal voor verlof": countParticipated(row, eersteRaces),
+      "Aantal na verlof":   countParticipated(row, tweedeRaces),
     };
+  }
+ 
+  // ── KLASSEMENT sheet ──────────────────────────────────────────────────────
+  const klassementData = sortedRows.map((row) => {
+    const base = buildBaseColumns(row, globalRankMap.get(row.bib) ?? "");
+    base["1e Periode"] = row.eerstePeriode;
+    base["2e Periode"] = row.tweedePeriode;
+    base["Totaal"]     = row.totaal;
     for (const raceName of allRaceNames) {
       if (row.weekPoints[raceName] !== undefined) {
         base[raceName] = row.weekPoints[raceName];
@@ -148,68 +231,79 @@ export function exportKlassementToExcel(
     }
     return base;
   });
-
-  const ws = XLSX.utils.json_to_sheet(klassementData);
-  XLSX.utils.book_append_sheet(wb, ws, "KLASSEMENT");
-
-  // Per-klasse sheets — in defined class order
-  const sortedKlasses = [...klasseMap.entries()].sort(
-    (a, b) => klasseSortIndex(a[0]) - klasseSortIndex(b[0])
+ 
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(klassementData),
+    "KLASSEMENT"
   );
-
-  for (const [klasse, klasseRows] of sortedKlasses) {
-    const sheetData = [...klasseRows]
-      .sort((a, b) => a.plaatsKlasse - b.plaatsKlasse)
-      .map((row) => {
-        const base: Record<string, unknown> = {
-          "Nr.": row.bib,
-          Naam: row.naam,
-          "Cat.": row.categorie,
-          Plaats: row.plaatsKlasse,
-          Totaal: row.totaal,
-        };
-        for (const raceName of allRaceNames) {
-          if (row.weekPoints[raceName] !== undefined) {
-            base[raceName] = row.weekPoints[raceName];
-          }
-        }
-        return base;
-      });
-    const sheetName = klasse.replace(/[:\\/?*\[\]]/g, "_").substring(0, 31);
-    const ws2 = XLSX.utils.json_to_sheet(sheetData);
-    XLSX.utils.book_append_sheet(wb, ws2, sheetName);
+ 
+  // ── REGELMATIGHEID sheet ──────────────────────────────────────────────────
+  // Build raw finish position lookup: bib → (sort_order → plaats)
+  const rawResultsByBib = new Map<number, Map<number, number>>();
+  for (const r of allResults) {
+    if (!rawResultsByBib.has(r.bib)) rawResultsByBib.set(r.bib, new Map());
+    rawResultsByBib.get(r.bib)!.set(r.week, r.plaats);
   }
-
-  // Sheet: REGELMATIGHEID
-  if (regelmatigheid.length > 0) {
-    const regData = regelmatigheid.map((row, idx) => ({
-      "Pos.": idx + 1,
-      "Nr.": row.bib,
-      Naam: row.naam,
-      Klasse: row.klasse,
-      Punten: row.punten,
-    }));
-    const wsReg = XLSX.utils.json_to_sheet(regData);
-    XLSX.utils.book_append_sheet(wb, wsReg, "REGELMATIGHEID");
+ 
+  // Score: sum of all races (DNS = maxPoints) minus single worst
+  function regelmatigheidScore(bib: number): number {
+    const resultMap = rawResultsByBib.get(bib) ?? new Map();
+    const scores = races.map((r) => resultMap.get(r.sort_order) ?? maxPoints);
+    if (scores.length === 0) return 0;
+    const total = scores.reduce((a, b) => a + b, 0);
+    const worst = Math.max(...scores);
+    return total - worst;
   }
-
-  // Sheet: STA TEAMS
+ 
+  // Regelmatigheid-specific global ranking (lower = better, more participations breaks ties)
+  const regSorted = [...rows].sort((a, b) => {
+    const sa = regelmatigheidScore(a.bib);
+    const sb = regelmatigheidScore(b.bib);
+    if (sa !== sb) return sa - sb;
+    const pa = (rawResultsByBib.get(a.bib) ?? new Map()).size;
+    const pb = (rawResultsByBib.get(b.bib) ?? new Map()).size;
+    if (pa !== pb) return pb - pa;
+    return a.bib - b.bib;
+  });
+  const regRankMap = new Map<number, number>();
+  regSorted.forEach((r, idx) => regRankMap.set(r.bib, idx + 1));
+ 
+  const regelmatigheidData = sortedRows.map((row) => {
+    const base = buildBaseColumns(row, regRankMap.get(row.bib) ?? "");
+    base["Strafpunten"]  = "";  // always empty, manual override column
+    base["Totaal punten"] = regelmatigheidScore(row.bib);
+ 
+    const resultMap = rawResultsByBib.get(row.bib) ?? new Map();
+    for (const race of races) {
+      // raw finish position; DNS shows as maxPoints (80)
+      base[race.name] = resultMap.get(race.sort_order) ?? maxPoints;
+    }
+ 
+    return base;
+  });
+ 
+  XLSX.utils.book_append_sheet(
+    wb,
+    XLSX.utils.json_to_sheet(regelmatigheidData),
+    "REGELMATIGHEID"
+  );
+ 
+  // ── STA TEAMS sheet ───────────────────────────────────────────────────────
   if (teamSTA.length > 0) {
     const staData = teamSTA
-      .filter((t) => t.team && t.team.toLowerCase() !== "geen team" && t.team.toLowerCase() !== "individueel")
-      .map((row, idx) => ({ "#": idx + 1, Team: row.team, Punten: row.punten }));
-    const wsSTA = XLSX.utils.json_to_sheet(staData);
-    XLSX.utils.book_append_sheet(wb, wsSTA, "STA TEAMS");
+      .filter((t) => t.team && !["geen team", "individueel"].includes(t.team.toLowerCase()))
+      .map((row, idx) => ({ "#": idx + 1, "Team": row.team, "Punten": row.punten }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(staData), "STA TEAMS");
   }
-
-  // Sheet: MIXED TEAMS
+ 
+  // ── MIXED TEAMS sheet ─────────────────────────────────────────────────────
   if (teamMixed.length > 0) {
     const mixedData = teamMixed
-      .filter((t) => t.team && t.team.toLowerCase() !== "geen team" && t.team.toLowerCase() !== "individueel")
-      .map((row, idx) => ({ "#": idx + 1, Team: row.team, Punten: row.punten }));
-    const wsMixed = XLSX.utils.json_to_sheet(mixedData);
-    XLSX.utils.book_append_sheet(wb, wsMixed, "MIXED TEAMS");
+      .filter((t) => t.team && !["geen team", "individueel"].includes(t.team.toLowerCase()))
+      .map((row, idx) => ({ "#": idx + 1, "Team": row.team, "Punten": row.punten }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mixedData), "MIXED TEAMS");
   }
-
+ 
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 }

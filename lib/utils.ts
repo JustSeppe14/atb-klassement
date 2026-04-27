@@ -54,6 +54,12 @@ export interface RaceResult {
   klasse?: string | null;
 }
 
+export interface ParsedResult {
+  bib: number | null;
+  naam: string | null;
+  plaats: number;
+}
+
 export interface KlassementRow {
   bib: number;
   naam: string;
