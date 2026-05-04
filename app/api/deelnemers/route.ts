@@ -107,6 +107,32 @@ export async function POST(req: NextRequest) {
   }
 }
 
+export async function PUT(req: NextRequest){
+  try {
+    const body = await req.json();
+    const {oldBib, newBib, ...rest} = body;
+
+    if (!oldBib || !newBib) {
+      return NextResponse.json({ error: 'oldBib and newBib are required'}, {status: 400});
+    }
+
+    const supabase = getSupabaseAdmin();
+
+    const {error} = await supabase.from('deelnemers').update({bib: newBib, ...rest}).eq('bib', oldBib);
+
+    if (error) throw error;
+
+    await supabase.from('race_results').update({bib: newBib}).eq('bib', oldBib);
+    //await supabase.from('klasse_history').update({bib: newBib}).eq('bib', oldBib);
+
+    return NextResponse.json({ success: true})
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Error";
+    return NextResponse.json({ error: message }, { status: 500 });
+
+  }
+}
+
 export async function DELETE(req: NextRequest) {
   const { bib } = await req.json();
   const supabase = getSupabaseAdmin();

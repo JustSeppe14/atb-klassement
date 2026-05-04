@@ -13,46 +13,77 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid week number" }, { status: 400 });
 
     const buffer = await file.arrayBuffer();
-    const results = parseFinishFile(buffer);
+    const parsed = parseFinishFile(buffer);
 
-    if (results.length === 0)
-      return NextResponse.json({ error: "No valid results found in file. Check column names (bib, pl)." }, { status: 400 });
+    if (parsed.length === 0)
+      return NextResponse.json(
+        { error: "No valid results found in file. Check column names (bib, pl)." },
+        { status: 400 }
+      );
 
     const supabase = getSupabaseAdmin();
 
-    // Fetch current klasse for all bibs so we can snapshot it on the result row
-    const bibs = results.map((r) => r.bib);
+    // Fetch all deelnemers for naam lookup
     const { data: deelnemers } = await supabase
       .from("deelnemers")
-      .select("bib, klasse")
-      .in("bib", bibs);
+      .select("bib, naam, klasse");
 
-    const klasseByBib = new Map<number, string>(
-      (deelnemers ?? []).map((d: { bib: number; klasse: string }) => [d.bib, d.klasse])
+    const deelnemerList: { bib: number; naam: string; klasse: string }[] =
+      deelnemers ?? [];
+
+    const bibByBib = new Map<number, { naam: string; klasse: string }>(
+      deelnemerList.map((d) => [d.bib, { naam: d.naam, klasse: d.klasse }])
     );
 
-    // Attach week number and current klasse snapshot
-    const withWeek = results.map((r) => ({
-      ...r,
-      week,
-      klasse: klasseByBib.get(r.bib) ?? null,
-    }));
+    // Normalize naam for matching (lowercase, trim)
+    const normalize = (s: string) => s.toLowerCase().trim();
+    const bibByNaam = new Map<string, number>(
+      deelnemerList.map((d) => [normalize(d.naam), d.bib])
+    );
 
-    // Delete existing results for this week first
+    const results = [];
+    const warnings: string[] = [];
+
+    for (const row of parsed) {
+      // Always resolve via naam — ignore whatever bib is in the file
+      if (!row.naam) {
+        warnings.push(`Rij zonder naam overgeslagen (plaats ${row.plaats})`);
+        continue;
+      }
+
+      const resolvedBib = bibByNaam.get(normalize(row.naam)) ?? null;
+
+      if (resolvedBib === null) {
+        warnings.push(`Naam "${row.naam}" niet gevonden in deelnemerslijst — overgeslagen`);
+        continue;
+      }
+
+      const klasse = bibByBib.get(resolvedBib)?.klasse ?? null;
+      results.push({ bib: resolvedBib, plaats: row.plaats, week, klasse });
+    }
+
+    if (results.length === 0)
+      return NextResponse.json(
+        { error: "Geen geldige deelnemers gevonden na koppeling." },
+        { status: 400 }
+      );
+
+    // Delete existing results for this week, then insert
     await supabase.from("race_results").delete().eq("week", week);
-
-    // Insert new results
-    const { error } = await supabase.from("race_results").insert(withWeek);
+    const { error } = await supabase.from("race_results").insert(results);
     if (error) throw error;
 
-    // Update current_week in config if this is a new week
-    const { data: config } = await supabase.from("config").select("*").eq("id", 1).single();
-    const currentWeek = config?.current_week ?? 1;
-    if (week >= currentWeek) {
+    // Update current_week in config if needed
+    const { data: config } = await supabase
+      .from("config")
+      .select("*")
+      .eq("id", 1)
+      .single();
+    if (week >= (config?.current_week ?? 1)) {
       await supabase.from("config").upsert({ id: 1, current_week: week });
     }
 
-    return NextResponse.json({ success: true, count: results.length, week });
+    return NextResponse.json({ success: true, count: results.length, week, warnings });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

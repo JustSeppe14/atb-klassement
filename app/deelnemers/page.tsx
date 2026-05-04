@@ -26,6 +26,7 @@ export default function DeelnemersPage() {
   // Inline Edit State
   const [inlineEditingBib, setInlineEditingBib] = useState<number | null>(null);
   const [inlineForm, setInlineForm] = useState<Partial<Deelnemer>>({});
+  const [inlineOriginalBib, setInlineOriginalBib] = useState<number | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [editingBib, setEditingBib] = useState<number | null>(null);
@@ -67,33 +68,48 @@ export default function DeelnemersPage() {
   // Triggered by the edit icon in the row
   const startInlineEdit = (d: Deelnemer) => {
     setInlineEditingBib(d.bib);
+    setInlineOriginalBib(d.bib);
     setInlineForm(d);
   };
 
   const cancelInlineEdit = () => {
     setInlineEditingBib(null);
+    setInlineOriginalBib(null);
     setInlineForm({});
   };
 
   const handleInlineSave = async () => {
-    if (!inlineForm.naam || !inlineForm.klasse) {
-      setToast({ message: "Vul naam en klasse in", type: "error" }); return;
-    }
-    setSaving(true);
-    const payload = { ...inlineForm, klasse: normalizeKlasse(inlineForm.klasse!) };
-    const res = await fetch("/api/deelnemers", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-    });
-    if (res.ok) {
-      setToast({ message: "✓ Deelnemer bijgewerkt", type: "success" });
-      setInlineEditingBib(null);
-      fetchAll();
-    } else {
-      const json = await res.json();
-      setToast({ message: json.error, type: "error" });
-    }
-    setSaving(false);
-  };
+  if (!inlineForm.naam || !inlineForm.klasse) {
+    setToast({ message: "Vul naam en klasse in", type: "error" }); return;
+  }
+  setSaving(true);
+
+  const payload = { ...inlineForm, klasse: normalizeKlasse(inlineForm.klasse!) };
+  const bibChanged = inlineForm.bib !== inlineOriginalBib;
+
+  const res = bibChanged
+    ? await fetch("/api/deelnemers", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldBib: inlineOriginalBib, newBib: inlineForm.bib, ...payload }),
+      })
+    : await fetch("/api/deelnemers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+  if (res.ok) {
+    setToast({ message: "✓ Deelnemer bijgewerkt", type: "success" });
+    setInlineEditingBib(null);
+    setInlineOriginalBib(null);
+    fetchAll();
+  } else {
+    const json = await res.json();
+    setToast({ message: json.error, type: "error" });
+  }
+  setSaving(false);
+};
 
   const handleExport = () => {
     if (deelnemers.length === 0) { setToast({ message: "Geen deelnemers om te exporteren", type: "error" }); return; }
@@ -316,7 +332,19 @@ export default function DeelnemersPage() {
                   <Fragment key={d.bib}>
                     <tr className={d.categorie === "DAM" ? "row-dam" : ""} style={{ background: isEditing ? "var(--surface-2)" : "inherit" }}>
                       {/* BIB COLUMN */}
-                      <td style={{ fontWeight: 700, color: "var(--accent)" }}>{d.bib}</td>
+                      <td style={{ fontWeight: 700, color: "var(--accent)" }}>
+                        {isEditing ? (
+                          <input 
+                            className="input"
+                            type="number"
+                            style={{...inlineInputStyle, width: 70}}
+                            value={inlineForm.bib || ""}
+                            onChange={(e) => setInlineForm(f => ({...f, bib: Number(e.target.value)}))}
+                          />
+                        ) : (
+                          d.bib
+                        )}
+                      </td>
                       
                       {/* NAME COLUMN */}
                       <td style={{ fontWeight: 600 }}>
