@@ -108,10 +108,19 @@ export function computeKlassement(
     const raceName = getRaceName(week);
     const weekResults = resultsByWeek.get(week) ?? [];
 
+    // ---- Apply override_points first (bypasses rank-based scoring) ----
+    for (const r of weekResults) {
+      if (r.override_points != null && pointsMap.has(r.bib)) {
+        pointsMap.get(r.bib)![raceName] = r.override_points;
+      }
+    }
+
     // Determine which bibs are switchers this week (racing in old klasse)
     const switcherBibs = new Set(
       weekResults
         .filter((r) => {
+          // Don't re-process overridden results
+          if (r.override_points != null) return false;
           const currentKlasse = currentKlasseByBib.get(r.bib);
           const raceKlasse = klasseForWeek(r.bib, week);
           return currentKlasse && raceKlasse !== currentKlasse;
@@ -121,6 +130,7 @@ export function computeKlassement(
 
     // Assign flat switch points to switchers
     for (const r of weekResults) {
+      if (r.override_points != null) continue; // already handled above
       if (switcherBibs.has(r.bib)) {
         pointsMap.get(r.bib)![raceName] = klasseSwitchPoints;
       }
@@ -135,7 +145,7 @@ export function computeKlassement(
 
     for (const [klasseKey, klasseDeelnemers] of klasseMap.entries()) {
       const allKlasseResults = weekResults
-        .filter((r) => klasseForWeek(r.bib, week) === klasseKey)
+        .filter((r) => r.override_points == null && klasseForWeek(r.bib, week) === klasseKey)
         .sort((a, b) => a.plaats - b.plaats);
 
       const bibPoints = new Map<number, number>();

@@ -3,7 +3,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
   LayoutDashboard, Upload, Users, Mail, Settings, 
-  Download, Trophy, LogOut, LogIn 
+  Download, Trophy, LogOut, LogIn, 
+  Pencil,
+  ListOrdered
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 
@@ -11,8 +13,9 @@ import { logout } from "@/app/actions/auth";
 const allNavItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, protected: false },
   { href: "/upload", label: "Uitslag uploaden", icon: Upload, protected: true },
+  { href: "/override-points", label: "Punten aanpassen", icon: Pencil, protected: true},
   { href: "/deelnemers", label: "Deelnemers", icon: Users, protected: true },
-  {href: '/startlijst', label: "Startlijst", icon: Users, protected: true},
+  { href: '/startlijst', label: "Startlijst", icon: ListOrdered, protected: true},
   { href: "/email", label: "E-mail versturen", icon: Mail, protected: true },
   { href: "/instellingen", label: "Instellingen", icon: Settings, protected: true },
 ];

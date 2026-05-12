@@ -54,6 +54,7 @@ export interface RaceResult {
   plaats: number;
   /** Klasse the rider competed in that week. Null/undefined = current klasse. */
   klasse?: string | null;
+  override_points?: number | null;
 }
 
 export interface ParsedResult {

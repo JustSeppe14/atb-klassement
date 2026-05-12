@@ -18,17 +18,21 @@ create table if not exists deelnemers (
 -- 2. RACE RESULTS
 -- ============================================================
 create table if not exists race_results (
-  id          bigserial primary key,
-  week        integer not null check (week >= 1 and week <= 20),
-  bib         integer not null,
-  plaats      integer not null,
-  klasse      text,       -- klasse the rider competed in that week (null = current klasse)
-  created_at  timestamptz default now(),
+  id              bigserial primary key,
+  week            integer not null check (week >= 1 and week <= 20),
+  bib             integer not null,
+  plaats          integer not null,
+  klasse          text,              -- klasse the rider competed in that week (null = current klasse)
+  override_points integer,           -- when set, used directly as points (bypasses rank calculation)
+  created_at      timestamptz default now(),
   unique (week, bib)
 );
 
 -- Migration: add klasse column if upgrading from an existing install
 alter table race_results add column if not exists klasse text;
+
+-- Migration: add override_points column if upgrading from an existing install
+alter table race_results add column if not exists override_points integer;
 
 -- ============================================================
 -- 3. CONFIG (single row, id=1)
