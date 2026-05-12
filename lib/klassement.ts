@@ -134,9 +134,6 @@ export function computeKlassement(
     }
 
     for (const [klasseKey, klasseDeelnemers] of klasseMap.entries()) {
-      // Include ALL riders who raced in this klasse this week (by their klasse
-      // at race time), so switchers still occupy their rank slot and don't
-      // compress the positions of riders behind them.
       const allKlasseResults = weekResults
         .filter((r) => klasseForWeek(r.bib, week) === klasseKey)
         .sort((a, b) => a.plaats - b.plaats);
@@ -144,8 +141,8 @@ export function computeKlassement(
       const bibPoints = new Map<number, number>();
       let rank = 0;
       for (const r of allKlasseResults) {
-        rank++; // always increment to preserve position slots
-        if (switcherBibs.has(r.bib)) continue; // flat points already assigned
+        rank++;
+        if (switcherBibs.has(r.bib)) continue;
         bibPoints.set(r.bib, rank <= capFinishPosition ? rank : capFinishPosition);
       }
 
@@ -203,11 +200,50 @@ export function computeKlassement(
       eerstePeriode: sumBestPct(firstPeriodValues),
       tweedePeriode: sumBestPct(secondPeriodValues),
       totaal: sumBestPct([...firstPeriodValues, ...secondPeriodValues]),
+      plaats: 0,
       plaatsKlasse: 0,
+      isNietGekwalificeerd: false,
+      xLabel: "",
     };
   });
 
-  // ---- Ranking ----
+  // ---- Participation qualification check (over full season combined) ----
+  const { firstPeriodRaces, secondPeriodRaces, minParticipationPct } = scoringCfg;
+  const minFraction = minParticipationPct / 100;
+
+  const firstPeriodWeeks = isSecondPeriodStarted
+    ? weeksWithResults.filter((w) => w < secondPeriodStartWeek)
+    : weeksWithResults;
+
+  const secondPeriodWeeks = isSecondPeriodStarted
+    ? weeksWithResults.filter((w) => w >= secondPeriodStartWeek)
+    : [];
+
+  const allSeasonWeeks = [...firstPeriodWeeks, ...secondPeriodWeeks];
+
+  // Total races held so far across the full season
+  const totalRacesHeld = allSeasonWeeks.length;
+
+  // Total races configured for the full season (always first + second period combined)
+  const totalRacesConfigured = firstPeriodRaces + secondPeriodRaces;
+
+  // Threshold is based on the full configured season (firstPeriodRaces + secondPeriodRaces),
+  // never capped to races held — so the bar doesn't drop just because few races have run yet.
+  const seasonThreshold = Math.ceil(totalRacesConfigured * minFraction);
+
+  for (const row of rows) {
+    // Count total starts across the whole season (any race where points were
+    // actually recorded, i.e. the entry exists and is not a DNS/absent 80)
+    const totalStarts = allSeasonWeeks.filter((w) => {
+      const pts = row.weekPoints[getRaceName(w)];
+      return pts !== undefined && pts < maxPoints;
+    }).length;
+
+    row.isNietGekwalificeerd = totalStarts < seasonThreshold;
+    row.xLabel = row.isNietGekwalificeerd ? `X${row.klasse}` : "";
+  }
+
+  // ---- Ranking per klasse ----
   const klasseMap = new Map<string, KlassementRow[]>();
   for (const row of rows) {
     if (!klasseMap.has(row.klasse)) klasseMap.set(row.klasse, []);
@@ -215,14 +251,87 @@ export function computeKlassement(
   }
 
   for (const [, klasseRows] of klasseMap.entries()) {
-    klasseRows.sort((a, b) => {
+    const qualified = klasseRows.filter((r) => !r.isNietGekwalificeerd);
+    const nietGekwalificeerd = klasseRows.filter((r) => r.isNietGekwalificeerd);
+
+    qualified.sort((a, b) => {
       if (a.totaal !== b.totaal) return a.totaal - b.totaal;
       const aPodium = countPodiums(a.weekPoints);
       const bPodium = countPodiums(b.weekPoints);
       if (aPodium !== bPodium) return bPodium - aPodium;
       return a.bib - b.bib;
     });
-    klasseRows.forEach((r, idx) => { r.plaatsKlasse = idx + 1; });
+
+    nietGekwalificeerd.sort((a, b) => {
+      const aStarts = allSeasonWeeks.filter(
+        (w) => (a.weekPoints[getRaceName(w)] ?? maxPoints) < maxPoints
+      ).length;
+      const bStarts = allSeasonWeeks.filter(
+        (w) => (b.weekPoints[getRaceName(w)] ?? maxPoints) < maxPoints
+      ).length;
+      if (bStarts !== aStarts) return bStarts - aStarts;
+      if (a.totaal !== b.totaal) return a.totaal - b.totaal;
+      return a.bib - b.bib;
+    });
+
+    [...qualified, ...nietGekwalificeerd].forEach((r, idx) => {
+      r.plaatsKlasse = idx + 1;
+    });
+  }
+
+  // ---- Overall Plaats (across all klasses) ----
+  const KLASSE_ORDER = ["A", "A40+", "B", "B50+", "C", "D", "E"];
+  const klasseRankMap = new Map(KLASSE_ORDER.map((k, i) => [k, i]));
+
+  const qualifiedAll = rows
+    .filter((r) => !r.isNietGekwalificeerd)
+    .sort((a, b) => {
+      if (a.totaal !== b.totaal) return a.totaal - b.totaal;
+      const aPodium = countPodiums(a.weekPoints);
+      const bPodium = countPodiums(b.weekPoints);
+      if (aPodium !== bPodium) return bPodium - aPodium;
+      if ((klasseRankMap.get(a.klasse) ?? 999) !== (klasseRankMap.get(b.klasse) ?? 999))
+        return (klasseRankMap.get(a.klasse) ?? 999) - (klasseRankMap.get(b.klasse) ?? 999);
+      return a.bib - b.bib;
+    });
+
+  const nietAll = rows
+    .filter((r) => r.isNietGekwalificeerd)
+    .sort((a, b) => {
+      if (a.totaal !== b.totaal) return a.totaal - b.totaal;
+      return a.bib - b.bib;
+    });
+
+  [...qualifiedAll, ...nietAll].forEach((r, idx) => {
+    r.plaats = idx + 1;
+  });
+
+  // ---- Per-category rankings ----
+  // Sorted with identical tiebreakers as the overall standings so that
+  // a rider's category rank always matches their position in the overall list.
+  const categories: Categorie[] = ["STA", "SEN", "DAM", "VET"];
+
+  for (const cat of categories) {
+    const catRows = rows
+      .filter((r) => r.categorie === cat && !r.isNietGekwalificeerd)
+      .sort((a, b) => {
+        if (a.totaal !== b.totaal) return a.totaal - b.totaal;
+        const aPodium = countPodiums(a.weekPoints);
+        const bPodium = countPodiums(b.weekPoints);
+        if (aPodium !== bPodium) return bPodium - aPodium;
+        // Match the overall standings tiebreaker: klasse order, then bib
+        const ka = klasseRankMap.get(a.klasse) ?? 999;
+        const kb = klasseRankMap.get(b.klasse) ?? 999;
+        if (ka !== kb) return ka - kb;
+        return a.bib - b.bib;
+      });
+
+    catRows.forEach((r, idx) => {
+      if (cat === "STA") r.plaatsSTA = idx + 1;
+      if (cat === "SEN") r.plaatsSEN = idx + 1;
+      if (cat === "DAM") r.plaatsDAM = idx + 1;
+      if (cat === "VET") r.plaatsVET = idx + 1;
+    });
   }
 
   return rows;

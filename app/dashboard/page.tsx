@@ -54,7 +54,7 @@ export default function DashboardPage() {
   })();
 
   return (
-    <div style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto" }}>
+<div style={{ padding: "24px", maxWidth: "1200px", margin: "0 auto", overflowX: "hidden", boxSizing: "border-box" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28 }}>
         <div>

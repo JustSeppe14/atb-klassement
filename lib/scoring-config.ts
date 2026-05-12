@@ -15,6 +15,9 @@ export interface ScoringConfig {
   klasseSwitchPoints: number; // points awarded for races in old klasse after a switch (was hardcoded: 50)
   teamStaSlots: TeamSlot[];   // team STA composition
   teamMixedSlots: TeamSlot[]; // team Mixed composition
+  firstPeriodRaces: number;
+  secondPeriodRaces: number;
+  minParticipationPct: number;
 }
 
 export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
@@ -31,6 +34,9 @@ export const DEFAULT_SCORING_CONFIG: ScoringConfig = {
     { cat: "SEN", count: 1 },
     { cat: "DAM", count: 1 },
   ],
+  firstPeriodRaces: 5,
+  secondPeriodRaces: 4,
+  minParticipationPct: 50
 };
 
 /** Maps a raw Supabase config row → ScoringConfig */
@@ -45,6 +51,9 @@ export function parseScoringConfig(row: Record<string, unknown>): ScoringConfig 
     klasseSwitchPoints:  typeof row.klasse_switch_points  === "number" ? row.klasse_switch_points  : DEFAULT_SCORING_CONFIG.klasseSwitchPoints,
     teamStaSlots:        Array.isArray(row.team_sta_slots)             ? row.team_sta_slots        : DEFAULT_SCORING_CONFIG.teamStaSlots,
     teamMixedSlots:      Array.isArray(row.team_mixed_slots)           ? row.team_mixed_slots      : DEFAULT_SCORING_CONFIG.teamMixedSlots,
+    firstPeriodRaces:    typeof row.first_period_races    === "number" ? row.first_period_races    : DEFAULT_SCORING_CONFIG.firstPeriodRaces,
+    secondPeriodRaces:   typeof row.second_period_races   === "number" ? row.second_period_races   : DEFAULT_SCORING_CONFIG.secondPeriodRaces,
+    minParticipationPct: typeof row.min_participation_pct === "number" ? row.min_participation_pct : DEFAULT_SCORING_CONFIG.minParticipationPct
   };
 }
 
@@ -60,5 +69,8 @@ export function scoringConfigToDb(cfg: ScoringConfig): Record<string, unknown> {
     klasse_switch_points: cfg.klasseSwitchPoints,
     team_sta_slots:       cfg.teamStaSlots,
     team_mixed_slots:     cfg.teamMixedSlots,
+    first_period_races:   cfg.firstPeriodRaces,
+    second_period_races:  cfg.secondPeriodRaces,
+    min_participation_pct: cfg.minParticipationPct
   };
 }

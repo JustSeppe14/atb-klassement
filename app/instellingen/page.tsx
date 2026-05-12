@@ -82,21 +82,25 @@ export default function InstellingenPage() {
     ]).then(([configData, racesData]) => {
       if (configData && !configData.error) {
         setConfig({
-          currentWeek: configData.currentWeek ?? DEFAULT_CONFIG.currentWeek,
+          currentWeek:           configData.currentWeek           ?? DEFAULT_CONFIG.currentWeek,
           isSecondPeriodStarted: configData.isSecondPeriodStarted ?? false,
           secondPeriodStartWeek: configData.secondPeriodStartWeek ?? 12,
-          seasonEnded: configData.seasonEnded ?? false,
+          seasonEnded:           configData.seasonEnded           ?? false,
         });
         setScoring({
-          maxPoints: configData.maxPoints ?? DEFAULT_SCORING_CONFIG.maxPoints,
-          capFinishPosition: configData.capFinishPosition ?? DEFAULT_SCORING_CONFIG.capFinishPosition,
-          bestPct: configData.bestPct ?? DEFAULT_SCORING_CONFIG.bestPct,
-          regAbsentPoints: configData.regAbsentPoints ?? DEFAULT_SCORING_CONFIG.regAbsentPoints,
-          regCapFinish: configData.regCapFinish ?? DEFAULT_SCORING_CONFIG.regCapFinish,
-          maxWeeks: configData.maxWeeks ?? DEFAULT_SCORING_CONFIG.maxWeeks,
-          klasseSwitchPoints: configData.klasseSwitchPoints ?? DEFAULT_SCORING_CONFIG.klasseSwitchPoints,
-          teamStaSlots: configData.teamStaSlots ?? DEFAULT_SCORING_CONFIG.teamStaSlots,
-          teamMixedSlots: configData.teamMixedSlots ?? DEFAULT_SCORING_CONFIG.teamMixedSlots,
+          maxPoints:           configData.maxPoints           ?? DEFAULT_SCORING_CONFIG.maxPoints,
+          capFinishPosition:   configData.capFinishPosition   ?? DEFAULT_SCORING_CONFIG.capFinishPosition,
+          bestPct:             configData.bestPct             ?? DEFAULT_SCORING_CONFIG.bestPct,
+          regAbsentPoints:     configData.regAbsentPoints     ?? DEFAULT_SCORING_CONFIG.regAbsentPoints,
+          regCapFinish:        configData.regCapFinish        ?? DEFAULT_SCORING_CONFIG.regCapFinish,
+          maxWeeks:            configData.maxWeeks            ?? DEFAULT_SCORING_CONFIG.maxWeeks,
+          klasseSwitchPoints:  configData.klasseSwitchPoints  ?? DEFAULT_SCORING_CONFIG.klasseSwitchPoints,
+          teamStaSlots:        configData.teamStaSlots        ?? DEFAULT_SCORING_CONFIG.teamStaSlots,
+          teamMixedSlots:      configData.teamMixedSlots      ?? DEFAULT_SCORING_CONFIG.teamMixedSlots,
+          // Participation config
+          firstPeriodRaces:    configData.firstPeriodRaces    ?? DEFAULT_SCORING_CONFIG.firstPeriodRaces,
+          secondPeriodRaces:   configData.secondPeriodRaces   ?? DEFAULT_SCORING_CONFIG.secondPeriodRaces,
+          minParticipationPct: configData.minParticipationPct ?? DEFAULT_SCORING_CONFIG.minParticipationPct,
         });
       }
       setRaces(racesData ?? []);
@@ -220,6 +224,10 @@ export default function InstellingenPage() {
 
   const toggle = (field: keyof SeasonConfig) => setConfig((c) => ({ ...c, [field]: !c[field] }));
 
+  // Derived: what the threshold will be with current settings
+  const totalRaces = scoring.firstPeriodRaces + scoring.secondPeriodRaces;
+  const threshold = Math.ceil(totalRaces * (scoring.minParticipationPct / 100));
+
   if (loading) {
     return (
       <div style={{
@@ -275,7 +283,7 @@ export default function InstellingenPage() {
               <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
                 <div
                   onClick={() => toggle("isSecondPeriodStarted")}
-                  style={{ width: 44, height: 24, borderRadius: 12, background: config.isSecondPeriodStarted ? "var(--accent)" : "var(--border)", position: "relative", transition: "0.2s" }}
+                  style={{ width: 44, height: 24, borderRadius: 12, background: config.isSecondPeriodStarted ? "var(--accent)" : "var(--border)", position: "relative", transition: "0.2s", flexShrink: 0 }}
                 >
                   <div style={{ position: "absolute", top: 3, left: config.isSecondPeriodStarted ? 23 : 3, width: 18, height: 18, borderRadius: 9, background: "#fff", transition: "0.2s" }} />
                 </div>
@@ -298,7 +306,7 @@ export default function InstellingenPage() {
               <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
                 <div
                   onClick={() => toggle("seasonEnded")}
-                  style={{ width: 44, height: 24, borderRadius: 12, background: config.seasonEnded ? "var(--red)" : "var(--border)", position: "relative", transition: "0.2s" }}
+                  style={{ width: 44, height: 24, borderRadius: 12, background: config.seasonEnded ? "var(--red)" : "var(--border)", position: "relative", transition: "0.2s", flexShrink: 0 }}
                 >
                   <div style={{ position: "absolute", top: 3, left: config.seasonEnded ? 23 : 3, width: 18, height: 18, borderRadius: 9, background: "#fff", transition: "0.2s" }} />
                 </div>
@@ -347,6 +355,8 @@ export default function InstellingenPage() {
       <section style={{ marginBottom: 60 }}>
         <h2 style={groupHeaderStyle}>Puntensysteem</h2>
         <div style={sideBySideGrid}>
+
+          {/* Klassement */}
           <div className="card" style={cardFlexStyle}>
             <div style={sectionTitle}>Klassement (Snelheid)</div>
             <div style={fieldGrid}>
@@ -362,10 +372,8 @@ export default function InstellingenPage() {
             <div style={fieldGrid}>
               <div>
                 <label style={labelStyle}>Schrapresultaten (%)</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <input type="number" className="input" style={{ width: "100%" }} value={scoring.bestPct} onChange={(e) => setNum("bestPct", e.target.value)} />
-                </div>
-                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>% telt mee voor einduitslag</span>
+                <input type="number" className="input" style={{ width: "100%" }} value={scoring.bestPct} onChange={(e) => setNum("bestPct", e.target.value)} />
+                <span style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, display: "block" }}>% telt mee voor einduitslag</span>
               </div>
               <div>
                 <label style={labelStyle}>Klassewissel Compensatie</label>
@@ -373,6 +381,70 @@ export default function InstellingenPage() {
               </div>
             </div>
           </div>
+
+          {/* Deelname drempel */}
+          <div className="card" style={cardFlexStyle}>
+            <div style={sectionTitle}>Deelname & Kwalificatie</div>
+            <div style={fieldGrid}>
+              <div>
+                <label style={labelStyle}>Races 1e periode</label>
+                <input
+                  type="number"
+                  className="input"
+                  style={{ width: "100%" }}
+                  value={scoring.firstPeriodRaces}
+                  onChange={(e) => setNum("firstPeriodRaces", e.target.value)}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>Races 2e periode</label>
+                <input
+                  type="number"
+                  className="input"
+                  style={{ width: "100%" }}
+                  value={scoring.secondPeriodRaces}
+                  onChange={(e) => setNum("secondPeriodRaces", e.target.value)}
+                />
+              </div>
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={labelStyle}>Min. deelname (%)</label>
+              <input
+                type="number"
+                className="input"
+                style={{ width: "100%" }}
+                min={1}
+                max={100}
+                value={scoring.minParticipationPct}
+                onChange={(e) => setNum("minParticipationPct", e.target.value)}
+              />
+              <span style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4, display: "block" }}>
+                % van totale seizoensraces vereist voor klassement
+              </span>
+            </div>
+
+            {/* Live preview */}
+            <div style={{
+              marginTop: "auto",
+              padding: "12px 16px",
+              background: "rgba(var(--accent-rgb,99,102,241),0.08)",
+              borderRadius: 8,
+              border: "1px solid rgba(var(--accent-rgb,99,102,241),0.2)",
+            }}>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                Berekening
+              </div>
+              <div style={{ fontSize: 13, color: "var(--text)", lineHeight: 1.6 }}>
+                <span style={{ color: "var(--accent)", fontWeight: 700 }}>{totalRaces}</span> totale races
+                ({scoring.firstPeriodRaces} + {scoring.secondPeriodRaces})
+                &nbsp;×&nbsp;
+                <span style={{ color: "var(--accent)", fontWeight: 700 }}>{scoring.minParticipationPct}%</span>
+                &nbsp;=&nbsp;minimum&nbsp;
+                <span style={{ color: "var(--accent)", fontWeight: 700 }}>{threshold} starts</span> vereist voor klassement
+              </div>
+            </div>
+          </div>
+
         </div>
       </section>
 

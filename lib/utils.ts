@@ -1,3 +1,5 @@
+// lib/utils.ts
+
 export const MAX_POINTS = 80;
 
 export interface Race {
@@ -70,11 +72,14 @@ export interface KlassementRow {
   totaal: number;
   eerstePeriode: number;
   tweedePeriode: number;
-  plaatsKlasse: number;
-  plaatsSTA?: number;
-  plaatsSEN?: number;
-  plaatsDAM?: number;
-  plaatsVET?: number;
+  plaats: number;        // overall ranking across all klasses
+  plaatsKlasse: number;  // ranking within own klasse
+  plaatsSTA?: number;    // ranking within STA category (across all klasses)
+  plaatsSEN?: number;    // ranking within SEN category (across all klasses)
+  plaatsDAM?: number;    // ranking within DAM category (across all klasses)
+  plaatsVET?: number;    // ranking within VET category (across all klasses)
+  isNietGekwalificeerd: boolean;
+  xLabel: string;
 }
 
 export interface SeasonConfig {
